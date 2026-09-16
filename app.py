@@ -18,14 +18,44 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# 2. Barra lateral para cargar el archivo
-st.sidebar.header("Carga de Datos")
-archivo_subido = st.sidebar.file_uploader("Sube tu base de datos (Excel):", type=["xlsx", "xls"])
+# ==========================================
+# 2. CONEXIÓN A GOOGLE SHEETS EN LA NUBE
+# ==========================================
+URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1gvdyoiorFXTNiXREPe2Xt55mOEjmUkAXwUEfOCmecfA/edit?usp=sharing"
 
-if archivo_subido is not None:
+@st.cache_data(ttl=600) # Se actualiza cada 10 minutos automáticamente
+def cargar_datos_desde_sheets(url):
     try:
-        # 3. Lectura de datos en la pestaña 'Boleto'
-        df = pd.read_excel(archivo_subido, sheet_name='Boleto')
+        # Convertimos el link de "compartir" en un link de "descarga directa" para Python
+        if "edit" in url:
+            url_descarga = url.split("/edit")[0] + "/export?format=xlsx"
+        else:
+            url_descarga = url
+            
+        return pd.read_excel(url_descarga, sheet_name='Boleto')
+    except Exception as e:
+        st.error(f"Error al conectar con Google Sheets: {e}")
+        return None
+
+df_cargado = None
+
+# Si pusiste el link, intentamos conectarnos
+if "docs.google.com" in URL_GOOGLE_SHEETS:
+    with st.spinner("Sincronizando base de datos en vivo..."):
+        df_cargado = cargar_datos_desde_sheets(URL_GOOGLE_SHEETS)
+else:
+    # Si olvidaste poner el link, mostramos el botón manual por las dudas
+    st.sidebar.warning("Link de Google Sheets no configurado. Sube el archivo manualmente.")
+    archivo_subido = st.sidebar.file_uploader("Sube tu base de datos (Excel):", type=["xlsx", "xls"])
+    if archivo_subido is not None:
+        df_cargado = pd.read_excel(archivo_subido, sheet_name='Boleto')
+
+# ==========================================
+# 3. PROCESAMIENTO Y GRÁFICOS
+# ==========================================
+if df_cargado is not None:
+    try:
+        df = df_cargado.copy()
         
         # --- CREACIÓN DE IDENTIFICADOR ÚNICO ACTUALIZADO ---
         if 'Nombres_de_Cuenta__c' in df.columns and 'Denominacion_Comercial__c' in df.columns:
@@ -50,13 +80,13 @@ if archivo_subido is not None:
             
         df['Comentario'] = df['Comentario'].fillna("")
         
-        # 4. Procesamiento de Columnas de Fecha
+        # Procesamiento de Columnas de Fecha
         cols_fechas = [c for c in df.columns if 'fecha' in str(c).lower()]
         
         for col in cols_fechas:
             df[col] = pd.to_datetime(df[col], errors='coerce')
             
-        # 5. FILTRO AÑO 2026 
+        # FILTRO AÑO 2026 
         mask_2026 = pd.Series(False, index=df.index)
         for col in cols_fechas:
             mask_2026 = mask_2026 | (df[col].dt.year == 2026)
@@ -77,7 +107,7 @@ if archivo_subido is not None:
             "En Proceso De Entrega": 1
         }
         
-        # 6. Lógica de Negocio: Estado actual y demoras
+        # Lógica de Negocio: Estado actual y demoras
         def calcular_estado_y_demora(row):
             estado_actual = "Ingreso Pendiente"
             ultima_fecha = pd.NaT
@@ -144,14 +174,14 @@ if archivo_subido is not None:
         df[['Estado Actual', 'Días en este estado', 'Fecha de Último Estado']] = df.apply(calcular_estado_y_demora, axis=1)
         df['Mes'] = df['Fecha de Último Estado'].dt.to_period('M').astype(str)
         
-        # --- MÁSCARA GLOBAL DE RETRASOS ---
+        # MÁSCARA GLOBAL DE RETRASOS
         retrasados_mask = df.apply(
             lambda x: x['Días en este estado'] > limites_demora.get(x['Estado Actual'], 5) 
             if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False, 
             axis=1
         )
         
-        # --- FILTROS EN LA BARRA LATERAL ---
+        # FILTROS EN LA BARRA LATERAL
         st.sidebar.markdown("---")
         st.sidebar.subheader("Filtros Globales")
         
@@ -180,7 +210,6 @@ if archivo_subido is not None:
             
             if sucursales_disponibles:
                 opciones_sucursal = ["Todas las sucursales"] + sucursales_disponibles
-                
                 idx_sucursal_defecto = 0
                 for i, suc in enumerate(opciones_sucursal):
                     if "autolux salta" in suc.lower():
@@ -197,14 +226,13 @@ if archivo_subido is not None:
                         axis=1
                     )
         
-        # --- FUNCIÓN AUXILIAR PARA GENERAR EXCEL EN MEMORIA ---
         def convertir_df_a_excel(df_export):
             salida = io.BytesIO()
             with pd.ExcelWriter(salida, engine='openpyxl') as writer:
                 df_export.to_excel(writer, index=False, sheet_name='Datos_Boletos')
             return salida.getvalue()
 
-        # 7. Creación de Pestañas Visuales (5 Pestañas)
+        # Creación de Pestañas Visuales
         tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "👥 Rendimiento del Equipo", 
             "🔍 Auditoría y Detalles",
@@ -234,7 +262,6 @@ if archivo_subido is not None:
 
         with tab2:
             st.subheader("Auditoría y Detalles de Operaciones")
-            
             total_boletos = len(df)
             total_finalizados = len(df[df['Estado Actual'] == 'Disfruta Tu Nuevo Toyota'])
             total_bajas = len(df[df['Estado Actual'] == 'Operación Dada De Baja'])
@@ -249,28 +276,18 @@ if archivo_subido is not None:
             st.markdown("---")
             st.write("**Explorar boletos por estado específico:**")
             
-            orden_filtro = [
-                "Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", 
-                "Firma Del Boleto", "En Proceso De Pago", "Facturacion", 
-                "Poliza De Seguro", "En Proceso De Patentamiento", 
-                "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Operación Dada De Baja"
-            ]
-            
+            orden_filtro = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Operación Dada De Baja"]
             estados_en_df = df['Estado Actual'].unique()
-            estados_disponibles = [e for e in orden_filtro if e in estados_en_df]
-            estados_disponibles += [e for e in estados_en_df if e not in orden_filtro]
+            estados_disponibles = [e for e in orden_filtro if e in estados_en_df] + [e for e in estados_en_df if e not in orden_filtro]
             
-            opciones_estado = ["Todos los estados"] + estados_disponibles
-            estado_seleccionado = st.selectbox("Filtrar tabla por estado:", opciones_estado)
+            estado_seleccionado = st.selectbox("Filtrar tabla por estado:", ["Todos los estados"] + estados_disponibles)
             
-            df_tabla = df.copy()
-            if estado_seleccionado != "Todos los estados":
-                df_tabla = df_tabla[df_tabla['Estado Actual'] == estado_seleccionado]
+            df_tabla = df.copy() if estado_seleccionado == "Todos los estados" else df[df['Estado Actual'] == estado_seleccionado]
             
             def aplicar_estilos_dinamicos(row):
                 styles = [''] * len(row)
-                estado = row['Estado Actual']
-                dias = row['Días en este estado']
+                estado = row.get('Estado Actual', '')
+                dias = row.get('Días en este estado', 0)
                 
                 if 'Estado Actual' in row.index:
                     idx_estado = row.index.get_loc('Estado Actual')
@@ -280,8 +297,7 @@ if archivo_subido is not None:
                         styles[idx_estado] = 'background-color: rgba(149, 165, 166, 0.4); color: #7f8c8d; font-style: italic;'
                         
                 if 'Días en este estado' in row.index and estado not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja']:
-                    limite = limites_demora.get(estado, 5)
-                    if dias > limite:
+                    if dias > limites_demora.get(estado, 5):
                         idx_dias = row.index.get_loc('Días en este estado')
                         styles[idx_dias] = 'background-color: rgba(255, 75, 75, 0.3); color: #c0392b; font-weight: bold;'
                         
@@ -292,45 +308,24 @@ if archivo_subido is not None:
             
             df_editado = st.data_editor(
                 df_tabla[columnas_relevantes].style.apply(aplicar_estilos_dinamicos, axis=1),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Identificador": None,
-                    "Comentario": st.column_config.TextColumn(
-                        "💬 Comentario (Doble clic para editar)",
-                        help="Haz doble clic aquí para escribir el motivo de la demora y presiona Enter."
-                    )
-                },
-                disabled=[c for c in columnas_relevantes if c != 'Comentario'], 
-                key="editor_tabla_auditoria"
+                use_container_width=True, hide_index=True,
+                column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario (Doble clic)", help="Escribe el motivo de la demora.")},
+                disabled=[c for c in columnas_relevantes if c != 'Comentario'], key="editor_tabla_auditoria"
             )
             
             if df_editado is not None:
                 for idx in df_editado.index:
-                    id_boleto = df_editado.at[idx, 'Identificador']
-                    coment = df_editado.at[idx, 'Comentario']
-                    df.loc[df['Identificador'] == id_boleto, 'Comentario'] = coment
-                    
+                    df.loc[df['Identificador'] == df_editado.at[idx, 'Identificador'], 'Comentario'] = df_editado.at[idx, 'Comentario']
                 df[['Identificador', 'Comentario']].drop_duplicates(subset=['Identificador']).to_csv(ARCHIVO_COMENTARIOS, index=False)
                 
-                # --- BOTÓN DE DESCARGA PARA AUDITORÍA ---
-                st.download_button(
-                    label="📥 Descargar tabla de Auditoría (Excel)",
-                    data=convertir_df_a_excel(df_editado),
-                    file_name=f'Auditoria_Boletos_{estado_seleccionado}.xlsx',
-                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                )
+                st.download_button("📥 Descargar tabla de Auditoría (Excel)", data=convertir_df_a_excel(df_editado), file_name=f'Auditoria_Boletos.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
         with tab3:
             st.subheader("Línea de Tiempo por Cliente")
-            
             if 'Identificador' in df.columns:
-                opciones = sorted(df['Identificador'].unique())
-                seleccion = st.selectbox("Escribe o selecciona el nombre del cliente o número de boleto:", opciones, index=None, placeholder="Ej: PEREZ JUAN | HILUX 4X4 | Boleto: 12345...")
-                
+                seleccion = st.selectbox("Escribe o selecciona el nombre del cliente o boleto:", sorted(df['Identificador'].unique()), index=None, placeholder="Ej: PEREZ JUAN...")
                 if seleccion:
                     datos_boleto = df[df['Identificador'] == seleccion].iloc[0]
-                    
                     col_info1, col_info2, col_info3 = st.columns(3)
                     col_info1.info(f"**Estado Actual:** {datos_boleto['Estado Actual']}")
                     
@@ -339,150 +334,80 @@ if archivo_subido is not None:
                     elif datos_boleto['Estado Actual'] == "Operación Dada De Baja":
                         col_info2.error("❌ **Operación Cancelada.**")
                     else:
-                        limite_estado = limites_demora.get(datos_boleto['Estado Actual'], 5)
                         dias_actuales = datos_boleto['Días en este estado']
-                        
-                        if dias_actuales > limite_estado:
-                            col_info2.error(f"⚠️ **RETRASADO:** {dias_actuales} días estancado (Límite: {limite_estado} días).")
-                        else:
-                            col_info2.info(f"⏳ **A tiempo:** Lleva {dias_actuales} días (Límite: {limite_estado} días).")
+                        limite = limites_demora.get(datos_boleto['Estado Actual'], 5)
+                        if dias_actuales > limite: col_info2.error(f"⚠️ **RETRASADO:** {dias_actuales} días estancado.")
+                        else: col_info2.info(f"⏳ **A tiempo:** Lleva {dias_actuales} días.")
                     
                     if 'Fecha_de_entrega_estimada__c' in df.columns and pd.notna(datos_boleto['Fecha_de_entrega_estimada__c']):
-                        fecha_est = datos_boleto['Fecha_de_entrega_estimada__c'].strftime('%d-%b-%Y')
-                        col_info3.metric("📅 Entrega Estimada", fecha_est)
+                        col_info3.metric("📅 Entrega Estimada", datos_boleto['Fecha_de_entrega_estimada__c'].strftime('%d-%b-%Y'))
                     else:
                         col_info3.metric("📅 Entrega Estimada", "No definida")
                     
-                    hitos = []
-                    fechas = []
+                    hitos, fechas = [], []
                     for col in cols_fechas:
-                        if col == 'Fecha_de_entrega_estimada__c':
-                            continue
-                        if pd.notna(datos_boleto[col]):
-                            nombre_limpio = str(col).replace('Fecha_de_', '').replace('Fecha_', '').replace('__c', '').replace('_', ' ').title()
-                            hitos.append(nombre_limpio)
+                        if col != 'Fecha_de_entrega_estimada__c' and pd.notna(datos_boleto[col]):
+                            hitos.append(str(col).replace('Fecha_de_', '').replace('Fecha_', '').replace('__c', '').replace('_', ' ').title())
                             fechas.append(datos_boleto[col])
                     
                     if hitos:
                         df_timeline = pd.DataFrame({'Etapa': hitos, 'Fecha': fechas})
-                        
-                        orden_ideal = [
-                            "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", 
-                            "Firma Del Boleto", "En Proceso De Pago", "Facturacion", 
-                            "Poliza De Seguro", "En Proceso De Patentamiento", 
-                            "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Baja"
-                        ]
-                        
+                        orden_ideal = ["Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Baja"]
                         df_timeline['Etapa'] = pd.Categorical(df_timeline['Etapa'], categories=orden_ideal, ordered=True)
                         df_timeline = df_timeline.sort_values(by='Etapa')
                         
-                        fig_timeline = px.line(
-                            df_timeline, x='Fecha', y='Etapa', markers=True,
-                            title=f"Historial de avance: {seleccion}", text='Fecha'
-                        )
-                        fig_timeline.update_traces(
-                            line_color='#2c3e50', marker=dict(size=12, color='#e74c3c'),
-                            textposition="top center", texttemplate='%{text|%d-%b-%Y}'
-                        )
+                        fig_timeline = px.line(df_timeline, x='Fecha', y='Etapa', markers=True, title=f"Historial: {seleccion}", text='Fecha')
+                        fig_timeline.update_traces(line_color='#2c3e50', marker=dict(size=12, color='#e74c3c'), textposition="top center", texttemplate='%{text|%d-%b-%Y}')
                         fig_timeline.update_yaxes(categoryorder='array', categoryarray=orden_ideal, autorange="reversed")
                         st.plotly_chart(fig_timeline, use_container_width=True)
-                    else:
-                        st.info("Este boleto no tiene ninguna fecha registrada en el sistema.")
-            else:
-                st.info("No se encontraron las columnas de Cliente para habilitar el buscador.")
+                    else: st.info("Boleto sin fechas registradas.")
+            else: st.info("No se encontraron las columnas de Cliente.")
 
         with tab4:
             st.subheader("Visión General del Flujo")
             col1, col2, col3 = st.columns(3)
             col1.metric("Operaciones (Boletos)", len(df))
-            
             vehiculos_pendientes = df[(df['Estado Actual'] != 'Disfruta Tu Nuevo Toyota') & (df['Estado Actual'] != 'Operación Dada De Baja')]
             demora_media = vehiculos_pendientes['Días en este estado'].mean()
-            col2.metric("Demora Promedio Actual (Pendientes)", f"{demora_media:.1f} días" if pd.notna(demora_media) else "0 días")
+            col2.metric("Demora Promedio Actual", f"{demora_media:.1f} días" if pd.notna(demora_media) else "0 días")
             
             st.markdown("---")
-            
             st.subheader("Cuellos de Botella: Boletos en cada etapa")
-            
-            lista_etapas_ideal = [
-                "Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", 
-                "Firma Del Boleto", "En Proceso De Pago", "Facturacion", 
-                "Poliza De Seguro", "En Proceso De Patentamiento", 
-                "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Operación Dada De Baja"
-            ]
-            
+            lista_etapas = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Operación Dada De Baja"]
             conteos_estado = df['Estado Actual'].value_counts().to_dict()
+            df_cuellos = pd.DataFrame([{'Etapa': e, 'Boletos Detenidos': conteos_estado.get(e, 0)} for e in reversed(lista_etapas)])
             
-            datos_cuellos = []
-            for etapa in reversed(lista_etapas_ideal):
-                cantidad = conteos_estado.get(etapa, 0)
-                datos_cuellos.append({'Etapa': etapa, 'Boletos Detenidos': cantidad})
-            
-            df_cuellos = pd.DataFrame(datos_cuellos)
-            
-            fig_cuellos = px.bar(
-                df_cuellos, 
-                x='Boletos Detenidos', 
-                y='Etapa', 
-                orientation='h',
-                title='Volumen actual de operaciones estancadas por proceso',
-                color='Boletos Detenidos',
-                color_continuous_scale=['#f0f2f6', '#ff4b4b']
-            )
+            fig_cuellos = px.bar(df_cuellos, x='Boletos Detenidos', y='Etapa', orientation='h', title='Volumen estancado por proceso', color='Boletos Detenidos', color_continuous_scale=['#f0f2f6', '#ff4b4b'])
             fig_cuellos.update_layout(showlegend=False)
-            
             st.plotly_chart(fig_cuellos, use_container_width=True)
             
             st.markdown("---")
-            st.subheader("Evolución Histórica de Demoras")
             historico = vehiculos_pendientes.groupby('Mes')['Días en este estado'].mean().reset_index()
             historico = historico[historico['Mes'] != 'NaT'].sort_values(by='Mes')
-            
             if not historico.empty:
-                fig_linea = px.line(historico, x='Mes', y='Días en este estado', title="Promedio de días de demora (solo operaciones pendientes)", markers=True)
+                fig_linea = px.line(historico, x='Mes', y='Días en este estado', title="Evolución Histórica de Demoras", markers=True)
                 fig_linea.update_traces(line_color='red') 
                 st.plotly_chart(fig_linea, use_container_width=True)
-            else:
-                st.info("No hay datos históricos suficientes para trazar la curva.")
                 
         with tab5:
             st.subheader("⚠️ Registro de Boletos Demorados")
-            st.write("Esta tabla filtra únicamente las operaciones que han superado el tiempo límite permitido en su estado actual, ordenadas por gravedad.")
-            
             df_demorados = df[retrasados_mask].copy()
             
             if not df_demorados.empty:
                 df_demorados = df_demorados.sort_values(by='Días en este estado', ascending=False)
-                
                 columnas_demora = ['Identificador', 'Numero_de_Boleto__c', 'Estado Actual', 'Días en este estado', 'Nombre_Asesor__c', 'Comentario']
                 df_demorados_mostrar = df_demorados[[c for c in columnas_demora if c in df_demorados.columns]]
                 
-                def destacar_dias_demora(row):
+                def destacar_demora(row):
                     styles = [''] * len(row)
                     if 'Días en este estado' in row.index:
-                        idx_dias = row.index.get_loc('Días en este estado')
-                        styles[idx_dias] = 'background-color: rgba(255, 75, 75, 0.4); color: #900C3F; font-weight: bold;'
+                        styles[row.index.get_loc('Días en este estado')] = 'background-color: rgba(255, 75, 75, 0.4); color: #900C3F; font-weight: bold;'
                     return styles
                 
-                st.dataframe(
-                    df_demorados_mostrar.style.apply(destacar_dias_demora, axis=1),
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-                # --- BOTÓN DE DESCARGA PARA ALERTAS DE DEMORA ---
-                st.download_button(
-                    label="📥 Descargar tabla de Demoras (Excel)",
-                    data=convertir_df_a_excel(df_demorados_mostrar),
-                    file_name='Alertas_de_Demora.xlsx',
-                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                )
-                
+                st.dataframe(df_demorados_mostrar.style.apply(destacar_demora, axis=1), use_container_width=True, hide_index=True)
+                st.download_button("📥 Descargar tabla de Demoras (Excel)", data=convertir_df_a_excel(df_demorados_mostrar), file_name='Alertas_de_Demora.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             else:
                 st.success("¡Excelente! No hay boletos demorados en este momento.")
 
     except Exception as e:
         st.error(f"Error procesando la base de datos. (Detalle: {e})")
-
-else:
-    st.info("👈 Por favor, arrastra tu archivo Excel a este panel lateral para generar los tableros.")
