@@ -7,11 +7,11 @@ import plotly.express as px
 # 1. Configuración principal de la página
 st.set_page_config(page_title="Flujo de Operaciones", layout="wide", page_icon="📊")
 
-# Título con el logo de Toyota incrustado
+# Título con el logo de Toyota ampliado
 st.markdown(
     """
     <div style="display: flex; align-items: center; margin-bottom: 20px;">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/e/e7/Toyota.svg" width="65" style="margin-right: 15px;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/e/e7/Toyota.svg" width="130" style="margin-right: 20px;">
         <h1 style="margin: 0;">Flujo y Seguimiento de Operaciones</h1>
     </div>
     """, 
@@ -168,15 +168,26 @@ if df_cargado is not None:
                 
             return pd.Series([estado_actual, demora, ultima_fecha])
             
-        df[['Estado Actual', 'Días en este estado', 'Fecha de Último Estado']] = df.apply(calcular_estado_y_demora, axis=1)
-        df['Mes'] = df['Fecha de Último Estado'].dt.to_period('M').astype(str)
+        # --- PARACAÍDAS PARA TABLAS VACÍAS ---
+        if df.empty:
+            df['Estado Actual'] = pd.Series(dtype='object')
+            df['Días en este estado'] = pd.Series(dtype='float64')
+            df['Fecha de Último Estado'] = pd.Series(dtype='datetime64[ns]')
+            df['Mes'] = pd.Series(dtype='object')
+            st.warning("⚠️ No se encontraron operaciones del año 2026 en la base de datos actual.")
+        else:
+            df[['Estado Actual', 'Días en este estado', 'Fecha de Último Estado']] = df.apply(calcular_estado_y_demora, axis=1)
+            df['Mes'] = df['Fecha de Último Estado'].dt.to_period('M').astype(str)
         
         # MÁSCARA GLOBAL DE RETRASOS
-        retrasados_mask = df.apply(
-            lambda x: x['Días en este estado'] > limites_demora.get(x['Estado Actual'], 5) 
-            if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False, 
-            axis=1
-        )
+        if df.empty:
+            retrasados_mask = pd.Series(False, index=df.index)
+        else:
+            retrasados_mask = df.apply(
+                lambda x: x['Días en este estado'] > limites_demora.get(x['Estado Actual'], 5) 
+                if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False, 
+                axis=1
+            )
         
         # FILTROS EN LA BARRA LATERAL
         st.sidebar.markdown("---")
@@ -242,17 +253,17 @@ if df_cargado is not None:
             st.subheader("Carga de Trabajo Operativo")
             colA, colB = st.columns(2)
             with colA:
-                if 'Nombre_Asesor__c' in df.columns:
+                if 'Nombre_Asesor__c' in df.columns and not df.empty:
                     vendedores = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
                     fig_vendedores = px.pie(vendedores, names='Nombre_Asesor__c', values='Operaciones', title='Operaciones por Asesor', hole=0.4)
                     st.plotly_chart(fig_vendedores, use_container_width=True)
-                elif 'Asesor__c' in df.columns: 
+                elif 'Asesor__c' in df.columns and not df.empty: 
                     vendedores = df.groupby('Asesor__c').size().reset_index(name='Operaciones')
                     fig_vendedores = px.pie(vendedores, names='Asesor__c', values='Operaciones', title='Operaciones por Asesor', hole=0.4)
                     st.plotly_chart(fig_vendedores, use_container_width=True)
                     
             with colB:
-                if 'Perfil_usuario__c' in df.columns:
+                if 'Perfil_usuario__c' in df.columns and not df.empty:
                     admins = df.groupby('Perfil_usuario__c').size().reset_index(name='Operaciones')
                     fig_admins = px.bar(admins, x='Perfil_usuario__c', y='Operaciones', title='Operaciones por Administrativo', color='Operaciones')
                     st.plotly_chart(fig_admins, use_container_width=True)
@@ -303,7 +314,6 @@ if df_cargado is not None:
             columnas_mostrar = ['Identificador', 'Numero_de_Boleto__c', 'Sucursal_de_Venta__c', 'Denominacion_Comercial__c', 'Nombres_de_Cuenta__c', 'Estado Actual', 'Días en este estado', 'Fecha de Último Estado', 'Nombre_Asesor__c', 'Comentario']
             columnas_relevantes = [c for c in columnas_mostrar if c in df_tabla.columns]
             
-            # --- TABLA CON COLORES (SOLO LECTURA) ---
             st.dataframe(
                 df_tabla[columnas_relevantes].style.apply(aplicar_estilos_dinamicos, axis=1),
                 use_container_width=True, hide_index=True
@@ -313,7 +323,7 @@ if df_cargado is not None:
 
         with tab3:
             st.subheader("Línea de Tiempo por Cliente")
-            if 'Identificador' in df.columns:
+            if 'Identificador' in df.columns and not df.empty:
                 seleccion = st.selectbox("Escribe o selecciona el nombre del cliente o boleto:", sorted(df['Identificador'].unique()), index=None, placeholder="Ej: PEREZ JUAN...")
                 if seleccion:
                     datos_boleto = df[df['Identificador'] == seleccion].iloc[0]
@@ -352,14 +362,14 @@ if df_cargado is not None:
                         fig_timeline.update_yaxes(categoryorder='array', categoryarray=orden_ideal, autorange="reversed")
                         st.plotly_chart(fig_timeline, use_container_width=True)
                     else: st.info("Boleto sin fechas registradas.")
-            else: st.info("No se encontraron las columnas de Cliente.")
+            else: st.info("No se encontraron las columnas de Cliente o la tabla está vacía.")
 
         with tab4:
             st.subheader("Visión General del Flujo")
             col1, col2, col3 = st.columns(3)
             col1.metric("Operaciones (Boletos)", len(df))
             vehiculos_pendientes = df[(df['Estado Actual'] != 'Disfruta Tu Nuevo Toyota') & (df['Estado Actual'] != 'Operación Dada De Baja')]
-            demora_media = vehiculos_pendientes['Días en este estado'].mean()
+            demora_media = vehiculos_pendientes['Días en este estado'].mean() if not vehiculos_pendientes.empty else 0
             col2.metric("Demora Promedio Actual", f"{demora_media:.1f} días" if pd.notna(demora_media) else "0 días")
             
             st.markdown("---")
@@ -373,12 +383,13 @@ if df_cargado is not None:
             st.plotly_chart(fig_cuellos, use_container_width=True)
             
             st.markdown("---")
-            historico = vehiculos_pendientes.groupby('Mes')['Días en este estado'].mean().reset_index()
-            historico = historico[historico['Mes'] != 'NaT'].sort_values(by='Mes')
-            if not historico.empty:
-                fig_linea = px.line(historico, x='Mes', y='Días en este estado', title="Evolución Histórica de Demoras", markers=True)
-                fig_linea.update_traces(line_color='red') 
-                st.plotly_chart(fig_linea, use_container_width=True)
+            if not vehiculos_pendientes.empty:
+                historico = vehiculos_pendientes.groupby('Mes')['Días en este estado'].mean().reset_index()
+                historico = historico[historico['Mes'] != 'NaT'].sort_values(by='Mes')
+                if not historico.empty:
+                    fig_linea = px.line(historico, x='Mes', y='Días en este estado', title="Evolución Histórica de Demoras", markers=True)
+                    fig_linea.update_traces(line_color='red') 
+                    st.plotly_chart(fig_linea, use_container_width=True)
                 
         with tab5:
             st.subheader("⚠️ Registro de Boletos Demorados")
@@ -389,7 +400,6 @@ if df_cargado is not None:
                 columnas_demora = ['Identificador', 'Numero_de_Boleto__c', 'Estado Actual', 'Días en este estado', 'Nombre_Asesor__c', 'Comentario']
                 df_demorados_mostrar = df_demorados[[c for c in columnas_demora if c in df_demorados.columns]]
                 
-                # --- TABLA SIN COLORES (EDITABLE) ---
                 df_editado_demorados = st.data_editor(
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
