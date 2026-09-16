@@ -281,23 +281,35 @@ if df_cargado is not None:
             
             df_tabla = df.copy() if estado_seleccionado == "Todos los estados" else df[df['Estado Actual'] == estado_seleccionado]
             
+            def aplicar_estilos_dinamicos(row):
+                styles = [''] * len(row)
+                estado = row.get('Estado Actual', '')
+                dias = row.get('Días en este estado', 0)
+                
+                if 'Estado Actual' in row.index:
+                    idx_estado = row.index.get_loc('Estado Actual')
+                    if estado == 'Disfruta Tu Nuevo Toyota':
+                        styles[idx_estado] = 'background-color: rgba(46, 204, 113, 0.3); font-weight: bold;'
+                    elif estado == 'Operación Dada De Baja':
+                        styles[idx_estado] = 'background-color: rgba(149, 165, 166, 0.4); color: #7f8c8d; font-style: italic;'
+                        
+                if 'Días en este estado' in row.index and estado not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja']:
+                    if dias > limites_demora.get(estado, 5):
+                        idx_dias = row.index.get_loc('Días en este estado')
+                        styles[idx_dias] = 'background-color: rgba(255, 75, 75, 0.3); color: #c0392b; font-weight: bold;'
+                        
+                return styles
+
             columnas_mostrar = ['Identificador', 'Numero_de_Boleto__c', 'Sucursal_de_Venta__c', 'Denominacion_Comercial__c', 'Nombres_de_Cuenta__c', 'Estado Actual', 'Días en este estado', 'Fecha de Último Estado', 'Nombre_Asesor__c', 'Comentario']
             columnas_relevantes = [c for c in columnas_mostrar if c in df_tabla.columns]
             
-            # --- TABLA SIN ESTILOS PARA PERMITIR EDICIÓN ---
-            df_editado = st.data_editor(
-                df_tabla[columnas_relevantes],
-                use_container_width=True, hide_index=True,
-                column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario (Doble clic)", help="Escribe el motivo de la demora.")},
-                disabled=[c for c in columnas_relevantes if c != 'Comentario'], key="editor_tabla_auditoria"
+            # --- TABLA CON COLORES (SOLO LECTURA) ---
+            st.dataframe(
+                df_tabla[columnas_relevantes].style.apply(aplicar_estilos_dinamicos, axis=1),
+                use_container_width=True, hide_index=True
             )
             
-            if df_editado is not None:
-                for idx in df_editado.index:
-                    df.loc[df['Identificador'] == df_editado.at[idx, 'Identificador'], 'Comentario'] = df_editado.at[idx, 'Comentario']
-                df[['Identificador', 'Comentario']].drop_duplicates(subset=['Identificador']).to_csv(ARCHIVO_COMENTARIOS, index=False)
-                
-                st.download_button("📥 Descargar tabla de Auditoría (Excel)", data=convertir_df_a_excel(df_editado), file_name=f'Auditoria_Boletos.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            st.download_button("📥 Descargar tabla de Auditoría (Excel)", data=convertir_df_a_excel(df_tabla[columnas_relevantes]), file_name=f'Auditoria_Boletos.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
         with tab3:
             st.subheader("Línea de Tiempo por Cliente")
@@ -377,14 +389,20 @@ if df_cargado is not None:
                 columnas_demora = ['Identificador', 'Numero_de_Boleto__c', 'Estado Actual', 'Días en este estado', 'Nombre_Asesor__c', 'Comentario']
                 df_demorados_mostrar = df_demorados[[c for c in columnas_demora if c in df_demorados.columns]]
                 
-                def destacar_demora(row):
-                    styles = [''] * len(row)
-                    if 'Días en este estado' in row.index:
-                        styles[row.index.get_loc('Días en este estado')] = 'background-color: rgba(255, 75, 75, 0.4); color: #900C3F; font-weight: bold;'
-                    return styles
+                # --- TABLA SIN COLORES (EDITABLE) ---
+                df_editado_demorados = st.data_editor(
+                    df_demorados_mostrar,
+                    use_container_width=True, hide_index=True,
+                    column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario (Doble clic)", help="Escribe el motivo de la demora.")},
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_tabla_demoras"
+                )
                 
-                st.dataframe(df_demorados_mostrar.style.apply(destacar_demora, axis=1), use_container_width=True, hide_index=True)
-                st.download_button("📥 Descargar tabla de Demoras (Excel)", data=convertir_df_a_excel(df_demorados_mostrar), file_name='Alertas_de_Demora.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                if df_editado_demorados is not None:
+                    for idx in df_editado_demorados.index:
+                        df.loc[df['Identificador'] == df_editado_demorados.at[idx, 'Identificador'], 'Comentario'] = df_editado_demorados.at[idx, 'Comentario']
+                    df[['Identificador', 'Comentario']].drop_duplicates(subset=['Identificador']).to_csv(ARCHIVO_COMENTARIOS, index=False)
+                
+                st.download_button("📥 Descargar tabla de Demoras (Excel)", data=convertir_df_a_excel(df_editado_demorados), file_name='Alertas_de_Demora.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             else:
                 st.success("¡Excelente! No hay boletos demorados en este momento.")
 
