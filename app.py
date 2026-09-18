@@ -132,10 +132,15 @@ if df_cargado is not None:
             
         df['Comentario'] = df['Comentario'].fillna("")
         
+        # FILTRO ESTRICTO DE 2026
         cols_fechas = [c for c in df.columns if 'fecha' in str(c).lower()]
         for col in cols_fechas:
             df[col] = pd.to_datetime(df[col], errors='coerce')
             
+        # 1. Descartar boletos que no tengan absolutamente ninguna fecha válida
+        df = df.dropna(subset=cols_fechas, how='all')
+        
+        # 2. Mantener solo boletos que tengan al menos una fecha en 2026
         mask_2026 = pd.Series(False, index=df.index)
         for col in cols_fechas:
             mask_2026 = mask_2026 | (df[col].dt.year == 2026)
@@ -302,12 +307,14 @@ if df_cargado is not None:
             with colA:
                 if 'Nombre_Asesor__c' in df.columns and not df.empty:
                     vendedores = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
-                    fig_vendedores = px.pie(vendedores, names='Nombre_Asesor__c', values='Operaciones', title='Operaciones por Asesor', hole=0.4)
+                    vendedores = vendedores.sort_values(by='Operaciones', ascending=False)
+                    fig_vendedores = px.bar(vendedores, x='Nombre_Asesor__c', y='Operaciones', title='Operaciones por Asesor', color='Operaciones', color_continuous_scale='Blues')
                     st.plotly_chart(fig_vendedores, use_container_width=True)
             with colB:
                 if 'Perfil_usuario__c' in df.columns and not df.empty:
                     admins = df.groupby('Perfil_usuario__c').size().reset_index(name='Operaciones')
-                    fig_admins = px.bar(admins, x='Perfil_usuario__c', y='Operaciones', title='Operaciones por Administrativo', color='Operaciones')
+                    admins = admins.sort_values(by='Operaciones', ascending=False)
+                    fig_admins = px.bar(admins, x='Perfil_usuario__c', y='Operaciones', title='Operaciones por Administrativo', color='Operaciones', color_continuous_scale='Reds')
                     st.plotly_chart(fig_admins, use_container_width=True)
 
         with tab2:
