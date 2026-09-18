@@ -132,17 +132,20 @@ if df_cargado is not None:
             
         df['Comentario'] = df['Comentario'].fillna("")
         
-        # FILTRO ESTRICTO DE 2026
+        # PROCESAMIENTO DE FECHAS
         cols_fechas = [c for c in df.columns if 'fecha' in str(c).lower()]
         for col in cols_fechas:
             df[col] = pd.to_datetime(df[col], errors='coerce')
             
-        # 1. Descartar boletos que no tengan absolutamente ninguna fecha válida
-        df = df.dropna(subset=cols_fechas, how='all')
+        # FILTRO ESTRICTO DE 2026 (Excluyendo Fecha_de_entrega_estimada__c)
+        cols_fechas_desarrollo = [c for c in cols_fechas if 'entrega_estimada' not in str(c).lower()]
         
-        # 2. Mantener solo boletos que tengan al menos una fecha en 2026
+        # 1. Descartar boletos que no tengan absolutamente ninguna fecha de desarrollo válida
+        df = df.dropna(subset=cols_fechas_desarrollo, how='all')
+        
+        # 2. Mantener solo boletos que tengan al menos una fecha de desarrollo en 2026
         mask_2026 = pd.Series(False, index=df.index)
-        for col in cols_fechas:
+        for col in cols_fechas_desarrollo:
             mask_2026 = mask_2026 | (df[col].dt.year == 2026)
         
         df = df[mask_2026].copy()
@@ -196,7 +199,7 @@ if df_cargado is not None:
                 
                 if not tiene_pro and not tiene_bol:
                     tiene_progreso_real = False
-                    for col in cols_fechas:
+                    for col in cols_fechas_desarrollo:
                         nombre_col_min = str(col).lower()
                         if 'entrega' not in nombre_col_min and 'disfruta' not in nombre_col_min and 'baja' not in nombre_col_min and 'creacion' not in nombre_col_min:
                             if pd.notna(row[col]):
@@ -308,13 +311,32 @@ if df_cargado is not None:
                 if 'Nombre_Asesor__c' in df.columns and not df.empty:
                     vendedores = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
                     vendedores = vendedores.sort_values(by='Operaciones', ascending=False)
-                    fig_vendedores = px.bar(vendedores, x='Nombre_Asesor__c', y='Operaciones', title='Operaciones por Asesor', color='Operaciones', color_continuous_scale='Blues')
+                    
+                    fig_vendedores = px.bar(
+                        vendedores, 
+                        x='Nombre_Asesor__c', 
+                        y='Operaciones', 
+                        title='Operaciones por Asesor', 
+                        color='Nombre_Asesor__c', 
+                        color_discrete_sequence=px.colors.qualitative.Dark24
+                    )
+                    fig_vendedores.update_layout(showlegend=False)
                     st.plotly_chart(fig_vendedores, use_container_width=True)
+                    
             with colB:
                 if 'Perfil_usuario__c' in df.columns and not df.empty:
                     admins = df.groupby('Perfil_usuario__c').size().reset_index(name='Operaciones')
                     admins = admins.sort_values(by='Operaciones', ascending=False)
-                    fig_admins = px.bar(admins, x='Perfil_usuario__c', y='Operaciones', title='Operaciones por Administrativo', color='Operaciones', color_continuous_scale='Reds')
+                    
+                    fig_admins = px.bar(
+                        admins, 
+                        x='Perfil_usuario__c', 
+                        y='Operaciones', 
+                        title='Operaciones por Administrativo', 
+                        color='Perfil_usuario__c', 
+                        color_discrete_sequence=px.colors.qualitative.Dark24
+                    )
+                    fig_admins.update_layout(showlegend=False)
                     st.plotly_chart(fig_admins, use_container_width=True)
 
         with tab2:
@@ -468,10 +490,8 @@ if df_cargado is not None:
                     if st.button("📧 Enviar Alerta Personalizada a cada Asesor"):
                         with st.spinner("Procesando y enviando correos individuales..."):
                             
-                            # Filtramos las columnas más importantes para no saturar el mail
                             df_mail = df_editado_demorados[['Identificador', 'Estado Actual', 'Días en este estado', 'Comentario']]
                             
-                            # Verificamos que exista la columna de asesor
                             if 'Nombre_Asesor__c' in df_editado_demorados.columns:
                                 asesores_con_demora = df_editado_demorados['Nombre_Asesor__c'].dropna().unique()
                                 
@@ -479,10 +499,8 @@ if df_cargado is not None:
                                 asesores_sin_correo = []
                                 
                                 for asesor in asesores_con_demora:
-                                    # Filtramos solo las demoras de este asesor
                                     df_asesor = df_mail[df_editado_demorados['Nombre_Asesor__c'] == asesor]
                                     
-                                    # Buscamos su correo. Si no está en el diccionario, lo mandamos al correo "Jefe" por defecto.
                                     try:
                                         correo_destino = diccionario_correos.get(asesor.strip(), st.secrets["EMAIL_DESTINO"])
                                         
