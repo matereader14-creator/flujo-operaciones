@@ -3,6 +3,9 @@ import io
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # 1. Configuración principal de la página
 st.set_page_config(page_title="Flujo de Operaciones", layout="wide", page_icon="📊")
@@ -23,7 +26,7 @@ st.markdown(
 # ==========================================
 URL_GOOGLE_SHEETS = "https://docs.google.com/spreadsheets/d/1gvdyoiorFXTNiXREPe2Xt55mOEjmUkAXwUEfOCmecfA/edit?usp=sharing"
 
-@st.cache_data(ttl=600) # Se actualiza cada 10 minutos automáticamente
+@st.cache_data(ttl=600)
 def cargar_datos_desde_sheets(url):
     try:
         if "edit" in url:
@@ -42,10 +45,65 @@ if "docs.google.com" in URL_GOOGLE_SHEETS:
     with st.spinner("Sincronizando base de datos en vivo..."):
         df_cargado = cargar_datos_desde_sheets(URL_GOOGLE_SHEETS)
 else:
-    st.sidebar.warning("Link de Google Sheets no configurado. Sube el archivo manualmente.")
-    archivo_subido = st.sidebar.file_uploader("Sube tu base de datos (Excel):", type=["xlsx", "xls"])
-    if archivo_subido is not None:
-        df_cargado = pd.read_excel(archivo_subido, sheet_name='Boleto')
+    st.sidebar.warning("Link de Google Sheets no configurado.")
+
+# ==========================================
+# DIRECTORIO DE CORREOS DE ASESORES
+# ==========================================
+# REEMPLAZA ESTO CON LOS NOMBRES REALES DEL EXCEL Y SUS CORREOS
+diccionario_correos = {
+    "Ernesto José Luis Salomón": "ernesto@ejemplo.com",
+    "Romina Romagnoli": "romina@ejemplo.com",
+    "Pablo Carrizo": "pablo@ejemplo.com",
+    "Nicolas Scachi": "nicolas@ejemplo.com",
+    "Facundo Gabriel Ponce Cavion": "facundo@ejemplo.com",
+    "Jorge Agustín Gonzalez": "jorge@ejemplo.com"
+}
+
+# ==========================================
+# FUNCIÓN PARA ENVIAR CORREOS
+# ==========================================
+def enviar_correo_personalizado(df_alertas, destinatario, nombre_asesor):
+    try:
+        remitente = st.secrets["EMAIL_REMITENTE"]
+        password = st.secrets["EMAIL_PASSWORD"]
+    except Exception:
+        return False, "Falta configurar las contraseñas en Streamlit Secrets."
+
+    msg = MIMEMultipart()
+    msg['From'] = remitente
+    msg['To'] = destinatario
+    msg['Subject'] = f"⚠️ Alerta de Demoras Operativas - {nombre_asesor} - {pd.Timestamp.now().strftime('%d/%m/%Y')}"
+    
+    # Diseño de la tabla
+    html_table = df_alertas.to_html(index=False, border=0, justify='center')
+    html_table = html_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif;"')
+    html_table = html_table.replace('<th>', '<th style="background-color: #d32f2f; color: white; padding: 10px; border: 1px solid #ddd;">')
+    html_table = html_table.replace('<td>', '<td style="padding: 10px; border: 1px solid #ddd; text-align: center;">')
+    
+    html_body = f"""
+    <html>
+    <body>
+        <h2 style="color: #d32f2f; font-family: Arial, sans-serif;">Reporte de Boletos con Retraso Operativo</h2>
+        <p style="font-family: Arial, sans-serif; font-size: 14px;">Hola <b>{nombre_asesor}</b>,</p>
+        <p style="font-family: Arial, sans-serif; font-size: 14px;">El sistema ha detectado que los siguientes boletos a tu cargo superan el tiempo límite establecido para su etapa de proceso. Por favor, revisar la situación de cada uno y actualizar el estado o dejar un comentario en la plataforma:</p>
+        {html_table}
+        <br>
+        <p style="font-family: Arial, sans-serif; font-size: 12px; color: #777;">Este es un mensaje automático generado por la Plataforma de Seguimiento de Operaciones de Calidad LUX.</p>
+    </body>
+    </html>
+    """
+    msg.attach(MIMEText(html_body, 'html'))
+    
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(remitente, password)
+        server.send_message(msg)
+        server.quit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
 
 # ==========================================
 # 3. PROCESAMIENTO Y GRÁFICOS
@@ -54,11 +112,9 @@ if df_cargado is not None:
     try:
         df = df_cargado.copy()
         
-        # --- CREACIÓN DE IDENTIFICADOR ÚNICO ACTUALIZADO ---
         if 'Nombres_de_Cuenta__c' in df.columns and 'Denominacion_Comercial__c' in df.columns:
             nombres = df['Nombres_de_Cuenta__c'].fillna("Cliente Sin Nombre")
             vehiculos = df['Denominacion_Comercial__c'].fillna("Vehículo Sin Asignar")
-            
             if 'Numero_de_Boleto__c' in df.columns:
                 boletos = df['Numero_de_Boleto__c'].fillna("S/N").astype(str)
                 df['Identificador'] = nombres.astype(str) + " | " + vehiculos.astype(str) + " | Boleto: " + boletos
@@ -67,7 +123,6 @@ if df_cargado is not None:
         else:
             df['Identificador'] = df.index.astype(str)
             
-        # --- CARGA DE COMENTARIOS PERMANENTES ---
         ARCHIVO_COMENTARIOS = 'comentarios_operaciones.csv'
         if os.path.exists(ARCHIVO_COMENTARIOS):
             df_com = pd.read_csv(ARCHIVO_COMENTARIOS)
@@ -77,20 +132,16 @@ if df_cargado is not None:
             
         df['Comentario'] = df['Comentario'].fillna("")
         
-        # Procesamiento de Columnas de Fecha
         cols_fechas = [c for c in df.columns if 'fecha' in str(c).lower()]
-        
         for col in cols_fechas:
             df[col] = pd.to_datetime(df[col], errors='coerce')
             
-        # FILTRO AÑO 2026 
         mask_2026 = pd.Series(False, index=df.index)
         for col in cols_fechas:
             mask_2026 = mask_2026 | (df[col].dt.year == 2026)
         
         df = df[mask_2026].copy()
         
-        # Diccionario de tiempos límite de demora
         limites_demora = {
             "Ingreso Pendiente": 1,
             "Creacion En Siac": 1,
@@ -104,7 +155,6 @@ if df_cargado is not None:
             "En Proceso De Entrega": 1
         }
         
-        # Lógica de Negocio: Estado actual y demoras
         def calcular_estado_y_demora(row):
             estado_actual = "Ingreso Pendiente"
             ultima_fecha = pd.NaT
@@ -129,7 +179,6 @@ if df_cargado is not None:
                 estado_actual = "Operación Dada De Baja"
                 ultima_fecha = row['Fecha_de_baja__c']
                 es_baja = True
-                
             elif 'Denominacion_Comercial__c' in df.columns:
                 vehiculo = str(row['Denominacion_Comercial__c']).strip().lower()
                 if pd.isna(row['Denominacion_Comercial__c']) or vehiculo in ('nan', 'none', ''):
@@ -168,18 +217,15 @@ if df_cargado is not None:
                 
             return pd.Series([estado_actual, demora, ultima_fecha])
             
-        # --- PARACAÍDAS PARA TABLAS VACÍAS ---
         if df.empty:
             df['Estado Actual'] = pd.Series(dtype='object')
             df['Días en este estado'] = pd.Series(dtype='float64')
             df['Fecha de Último Estado'] = pd.Series(dtype='datetime64[ns]')
             df['Mes'] = pd.Series(dtype='object')
-            st.warning("⚠️ No se encontraron operaciones del año 2026 en la base de datos actual.")
         else:
             df[['Estado Actual', 'Días en este estado', 'Fecha de Último Estado']] = df.apply(calcular_estado_y_demora, axis=1)
             df['Mes'] = df['Fecha de Último Estado'].dt.to_period('M').astype(str)
         
-        # MÁSCARA GLOBAL DE RETRASOS
         if df.empty:
             retrasados_mask = pd.Series(False, index=df.index)
         else:
@@ -189,7 +235,6 @@ if df_cargado is not None:
                 axis=1
             )
         
-        # FILTROS EN LA BARRA LATERAL
         st.sidebar.markdown("---")
         st.sidebar.subheader("Filtros Globales")
         
@@ -240,12 +285,14 @@ if df_cargado is not None:
                 df_export.to_excel(writer, index=False, sheet_name='Datos_Boletos')
             return salida.getvalue()
 
-        # Creación de Pestañas Visuales
+        # ==========================================
+        # CREACIÓN DE PESTAÑAS
+        # ==========================================
         tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "👥 Rendimiento del Equipo", 
-            "🔍 Auditoría y Detalles",
-            "🔎 Rastreo Individual",
-            "📊 Estado de Operaciones",
+            "👥 Rendimiento", 
+            "🔍 Auditoría",
+            "🔎 Rastreo",
+            "📊 Flujo",
             "⚠️ Alertas de Demora"
         ])
         
@@ -257,11 +304,6 @@ if df_cargado is not None:
                     vendedores = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
                     fig_vendedores = px.pie(vendedores, names='Nombre_Asesor__c', values='Operaciones', title='Operaciones por Asesor', hole=0.4)
                     st.plotly_chart(fig_vendedores, use_container_width=True)
-                elif 'Asesor__c' in df.columns and not df.empty: 
-                    vendedores = df.groupby('Asesor__c').size().reset_index(name='Operaciones')
-                    fig_vendedores = px.pie(vendedores, names='Asesor__c', values='Operaciones', title='Operaciones por Asesor', hole=0.4)
-                    st.plotly_chart(fig_vendedores, use_container_width=True)
-                    
             with colB:
                 if 'Perfil_usuario__c' in df.columns and not df.empty:
                     admins = df.groupby('Perfil_usuario__c').size().reset_index(name='Operaciones')
@@ -361,8 +403,6 @@ if df_cargado is not None:
                         fig_timeline.update_traces(line_color='#2c3e50', marker=dict(size=12, color='#e74c3c'), textposition="top center", texttemplate='%{text|%d-%b-%Y}')
                         fig_timeline.update_yaxes(categoryorder='array', categoryarray=orden_ideal, autorange="reversed")
                         st.plotly_chart(fig_timeline, use_container_width=True)
-                    else: st.info("Boleto sin fechas registradas.")
-            else: st.info("No se encontraron las columnas de Cliente o la tabla está vacía.")
 
         with tab4:
             st.subheader("Visión General del Flujo")
@@ -403,8 +443,8 @@ if df_cargado is not None:
                 df_editado_demorados = st.data_editor(
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
-                    column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario (Doble clic)", help="Escribe el motivo de la demora.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_tabla_demoras"
+                    column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras"
                 )
                 
                 if df_editado_demorados is not None:
@@ -412,7 +452,54 @@ if df_cargado is not None:
                         df.loc[df['Identificador'] == df_editado_demorados.at[idx, 'Identificador'], 'Comentario'] = df_editado_demorados.at[idx, 'Comentario']
                     df[['Identificador', 'Comentario']].drop_duplicates(subset=['Identificador']).to_csv(ARCHIVO_COMENTARIOS, index=False)
                 
-                st.download_button("📥 Descargar tabla de Demoras (Excel)", data=convertir_df_a_excel(df_editado_demorados), file_name='Alertas_de_Demora.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                st.markdown("---")
+                col_b1, col_b2 = st.columns([1, 1])
+                with col_b1:
+                    st.download_button("📥 Descargar (Excel)", data=convertir_df_a_excel(df_editado_demorados), file_name='Demoras.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                
+                with col_b2:
+                    if st.button("📧 Enviar Alerta Personalizada a cada Asesor"):
+                        with st.spinner("Procesando y enviando correos individuales..."):
+                            
+                            # Filtramos las columnas más importantes para no saturar el mail
+                            df_mail = df_editado_demorados[['Identificador', 'Estado Actual', 'Días en este estado', 'Comentario']]
+                            
+                            # Verificamos que exista la columna de asesor
+                            if 'Nombre_Asesor__c' in df_editado_demorados.columns:
+                                asesores_con_demora = df_editado_demorados['Nombre_Asesor__c'].dropna().unique()
+                                
+                                correos_enviados = 0
+                                asesores_sin_correo = []
+                                
+                                for asesor in asesores_con_demora:
+                                    # Filtramos solo las demoras de este asesor
+                                    df_asesor = df_mail[df_editado_demorados['Nombre_Asesor__c'] == asesor]
+                                    
+                                    # Buscamos su correo. Si no está en el diccionario, lo mandamos al correo "Jefe" por defecto.
+                                    try:
+                                        correo_destino = diccionario_correos.get(asesor.strip(), st.secrets["EMAIL_DESTINO"])
+                                        
+                                        if correo_destino == st.secrets["EMAIL_DESTINO"]:
+                                            asesores_sin_correo.append(asesor)
+                                            nombre_mensaje = f"{asesor} (Enviado a Supervisión)"
+                                        else:
+                                            nombre_mensaje = asesor
+                                            
+                                        exito, msj = enviar_correo_personalizado(df_asesor, correo_destino, nombre_mensaje)
+                                        if exito: 
+                                            correos_enviados += 1
+                                            
+                                    except Exception as e:
+                                        st.error(f"Falta configurar los Secrets de Streamlit. Detalle: {e}")
+                                        break
+                                
+                                if correos_enviados > 0:
+                                    st.success(f"¡Se enviaron {correos_enviados} correos personalizados exitosamente!")
+                                    if asesores_sin_correo:
+                                        st.warning(f"Nota: Los siguientes asesores no estaban en el diccionario y sus reportes se enviaron al correo de supervisión: {', '.join(asesores_sin_correo)}")
+                            else:
+                                st.error("No se encontró la columna de Asesores para dividir los correos.")
+                                
             else:
                 st.success("¡Excelente! No hay boletos demorados en este momento.")
 
