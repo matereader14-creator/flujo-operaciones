@@ -50,14 +50,9 @@ else:
 # ==========================================
 # DIRECTORIO DE CORREOS DE ASESORES
 # ==========================================
-# REEMPLAZA ESTO CON LOS NOMBRES REALES DEL EXCEL Y SUS CORREOS
+# PRONTO AGREGAREMOS AQUÍ LOS CORREOS REALES
 diccionario_correos = {
-    "Ernesto José Luis Salomón": "ernesto@ejemplo.com",
-    "Romina Romagnoli": "romina@ejemplo.com",
-    "Pablo Carrizo": "pablo@ejemplo.com",
-    "Nicolas Scachi": "nicolas@ejemplo.com",
-    "Facundo Gabriel Ponce Cavion": "facundo@ejemplo.com",
-    "Jorge Agustín Gonzalez": "jorge@ejemplo.com"
+    # "Nombre exacto del asesor": "correo@ejemplo.com",
 }
 
 # ==========================================
@@ -488,23 +483,19 @@ if df_cargado is not None:
                         df.loc[df['Identificador'] == df_editado_demorados.at[idx, 'Identificador'], 'Comentario'] = df_editado_demorados.at[idx, 'Comentario']
                     df[['Identificador', 'Comentario']].drop_duplicates(subset=['Identificador']).to_csv(ARCHIVO_COMENTARIOS, index=False)
                 
-                # --- NUEVO GRÁFICO RESUMEN DE DEMORAS POR ASESOR ---
+                # --- GRÁFICO RESUMEN DE DEMORAS POR ASESOR ---
                 if 'Nombre_Asesor__c' in df_editado_demorados.columns and not df_editado_demorados.empty:
                     st.markdown("---")
                     
-                    # Contamos boletos por asesor
                     conteo = df_editado_demorados['Nombre_Asesor__c'].value_counts().reset_index()
                     conteo.columns = ['Asesor', 'Cantidad']
                     
-                    # Calculamos el total y lo agregamos como fila
                     total_demoras = conteo['Cantidad'].sum()
                     fila_total = pd.DataFrame([{'Asesor': 'TOTAL', 'Cantidad': total_demoras}])
                     
-                    # Ordenamos para que la barra de TOTAL quede visualmente arriba y el resto en orden descendente
                     conteo_normal = conteo.sort_values(by='Cantidad', ascending=True)
                     conteo_final = pd.concat([conteo_normal, fila_total], ignore_index=True)
                     
-                    # Definimos el mapa de colores: colores oscuros para asesores, rojo estricto para el TOTAL
                     mapa_colores = {asesor: px.colors.qualitative.Dark24[i % 24] for i, asesor in enumerate(conteo_normal['Asesor'])}
                     mapa_colores['TOTAL'] = '#d32f2f'
                     
