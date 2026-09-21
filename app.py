@@ -269,9 +269,12 @@ if df_cargado is not None:
             df['Días en este estado'] = pd.Series(dtype='float64')
             df['Fecha de Último Estado'] = pd.Series(dtype='datetime64[ns]')
             df['Mes'] = pd.Series(dtype='object')
+            df['Límite Máximo'] = pd.Series(dtype='object')
         else:
             df[['Estado Actual', 'Días en este estado', 'Fecha de Último Estado']] = df.apply(calcular_estado_y_demora, axis=1)
             df['Mes'] = df['Fecha de Último Estado'].dt.to_period('M').astype(str)
+            # Agregar la nueva columna cruzando los estados con el diccionario
+            df['Límite Máximo'] = df['Estado Actual'].apply(lambda x: limites_demora.get(x, "-"))
         
         if df.empty:
             retrasados_mask = pd.Series(False, index=df.index)
@@ -333,7 +336,7 @@ if df_cargado is not None:
             return salida.getvalue()
 
         # ==========================================
-        # CREACIÓN DE PESTAÑAS (ORDEN MODIFICADO)
+        # CREACIÓN DE PESTAÑAS
         # ==========================================
         tab_auditoria, tab_rendimiento, tab_rastreo, tab_flujo, tab_alertas = st.tabs([
             "🔍 Auditoría",
@@ -386,7 +389,8 @@ if df_cargado is not None:
                         
                 return styles
 
-            columnas_mostrar = ['Identificador', 'Numero_de_Boleto__c', 'Sucursal_de_Venta__c', 'Denominacion_Comercial__c', 'Nombres_de_Cuenta__c', 'Estado Actual', 'Días en este estado', 'Fecha de Último Estado', 'Nombre_Asesor__c', 'Comentario']
+            # NUEVA COLUMNA INCLUIDA AQUÍ
+            columnas_mostrar = ['Identificador', 'Numero_de_Boleto__c', 'Sucursal_de_Venta__c', 'Denominacion_Comercial__c', 'Nombres_de_Cuenta__c', 'Estado Actual', 'Días en este estado', 'Límite Máximo', 'Fecha de Último Estado', 'Nombre_Asesor__c', 'Comentario']
             columnas_relevantes = [c for c in columnas_mostrar if c in df_tabla.columns]
             
             st.dataframe(
@@ -555,7 +559,8 @@ if df_cargado is not None:
             
             if not df_demorados.empty:
                 df_demorados = df_demorados.sort_values(by='Días en este estado', ascending=False)
-                columnas_demora = ['Identificador', 'Numero_de_Boleto__c', 'Estado Actual', 'Días en este estado', 'Nombre_Asesor__c', 'Comentario']
+                # NUEVA COLUMNA INCLUIDA AQUÍ
+                columnas_demora = ['Identificador', 'Numero_de_Boleto__c', 'Estado Actual', 'Días en este estado', 'Límite Máximo', 'Nombre_Asesor__c', 'Comentario']
                 df_demorados_mostrar = df_demorados[[c for c in columnas_demora if c in df_demorados.columns]]
                 
                 # --- BUSCADOR UNIVERSAL ---
@@ -619,7 +624,8 @@ if df_cargado is not None:
                     if st.button("📧 Enviar Alerta Personalizada a cada Asesor"):
                         with st.spinner("Procesando y enviando correos (Asesores y Administradores)..."):
                             
-                            df_mail_completo = df_editado_demorados[['Identificador', 'Estado Actual', 'Días en este estado', 'Nombre_Asesor__c', 'Comentario']]
+                            # LA NUEVA COLUMNA SE AGREGA AQUÍ TAMBIÉN PARA LOS CORREOS
+                            df_mail_completo = df_editado_demorados[['Identificador', 'Estado Actual', 'Días en este estado', 'Límite Máximo', 'Nombre_Asesor__c', 'Comentario']]
                             
                             if 'Nombre_Asesor__c' in df_editado_demorados.columns:
                                 asesores_con_demora = df_editado_demorados['Nombre_Asesor__c'].dropna().unique()
@@ -670,4 +676,3 @@ if df_cargado is not None:
 
     except Exception as e:
         st.error(f"Error procesando la base de datos. (Detalle: {e})")
-        
