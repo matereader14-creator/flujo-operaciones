@@ -397,39 +397,21 @@ if df_cargado is not None:
             st.download_button("📥 Descargar tabla de Auditoría (Excel)", data=convertir_df_a_excel(df_tabla[columnas_relevantes]), file_name=f'Auditoria_Boletos.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
         with tab_rendimiento:
-            st.subheader("Carga de Trabajo Operativo")
-            colA, colB = st.columns(2)
-            with colA:
-                if 'Nombre_Asesor__c' in df.columns and not df.empty:
-                    vendedores = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
-                    vendedores = vendedores.sort_values(by='Operaciones', ascending=False)
-                    
-                    fig_vendedores = px.bar(
-                        vendedores, 
-                        x='Nombre_Asesor__c', 
-                        y='Operaciones', 
-                        title='Operaciones por Asesor', 
-                        color='Nombre_Asesor__c', 
-                        color_discrete_sequence=px.colors.qualitative.Dark24
-                    )
-                    fig_vendedores.update_layout(showlegend=False)
-                    st.plotly_chart(fig_vendedores, use_container_width=True)
-                    
-            with colB:
-                if 'Perfil_usuario__c' in df.columns and not df.empty:
-                    admins = df.groupby('Perfil_usuario__c').size().reset_index(name='Operaciones')
-                    admins = admins.sort_values(by='Operaciones', ascending=False)
-                    
-                    fig_admins = px.bar(
-                        admins, 
-                        x='Perfil_usuario__c', 
-                        y='Operaciones', 
-                        title='Operaciones por Administrativo', 
-                        color='Perfil_usuario__c', 
-                        color_discrete_sequence=px.colors.qualitative.Dark24
-                    )
-                    fig_admins.update_layout(showlegend=False)
-                    st.plotly_chart(fig_admins, use_container_width=True)
+            st.subheader("Carga de Trabajo Operativo - Asesores")
+            if 'Nombre_Asesor__c' in df.columns and not df.empty:
+                vendedores = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
+                vendedores = vendedores.sort_values(by='Operaciones', ascending=False)
+                
+                fig_vendedores = px.bar(
+                    vendedores, 
+                    x='Nombre_Asesor__c', 
+                    y='Operaciones', 
+                    title='Operaciones por Asesor', 
+                    color='Nombre_Asesor__c', 
+                    color_discrete_sequence=px.colors.qualitative.Dark24
+                )
+                fig_vendedores.update_layout(showlegend=False)
+                st.plotly_chart(fig_vendedores, use_container_width=True)
 
         with tab_rastreo:
             st.subheader("Línea de Tiempo por Cliente")
@@ -556,7 +538,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v4"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v5"
                 )
                 
                 if df_editado_demorados is not None:
