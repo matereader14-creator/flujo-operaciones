@@ -116,7 +116,6 @@ def enviar_correo_personalizado(df_alertas, destinatario, nombre_asesor, es_admi
     html_table = html_table.replace('<th>', '<th style="background-color: #d32f2f; color: white; padding: 10px; border: 1px solid #ddd;">')
     html_table = html_table.replace('<td>', '<td style="padding: 10px; border: 1px solid #ddd; text-align: center;">')
     
-    # Adaptar el texto si es administrador o asesor
     if es_admin:
         intro_texto = "El sistema ha detectado el siguiente listado GENERAL de todos los boletos de la empresa que superan el tiempo límite establecido para su etapa de proceso. Este es un reporte global recordatorio de todas las demoras actuales:"
     else:
@@ -178,14 +177,12 @@ if df_cargado is not None:
         for col in cols_fechas:
             df[col] = pd.to_datetime(df[col], errors='coerce')
             
-        # FILTRO ESTRICTO DE 2026 (Excluyendo Fecha_de_entrega_estimada__c)
+        # FILTRO ESTRICTO DE 2026
         cols_fechas_desarrollo = [c for c in cols_fechas if 'entrega_estimada' not in str(c).lower()]
         cols_fechas_calculo_inicio = [c for c in cols_fechas_desarrollo if 'baja' not in str(c).lower()]
         
-        # 1. Descartar boletos que no tengan absolutamente ninguna fecha de desarrollo válida
         df = df.dropna(subset=cols_fechas_desarrollo, how='all')
         
-        # 2. Mantener solo boletos que tengan al menos una fecha de desarrollo en 2026
         mask_2026 = pd.Series(False, index=df.index)
         for col in cols_fechas_desarrollo:
             mask_2026 = mask_2026 | (df[col].dt.year == 2026)
@@ -458,15 +455,28 @@ if df_cargado is not None:
                     else:
                         col_info3.metric("📅 Entrega Estimada", "No definida")
                         
-                    # CÁLCULO DE DURACIÓN TOTAL O TRANSCURRIDA
-                    fecha_inicio_boleto = datos_boleto[cols_fechas_calculo_inicio].min()
+                    # CÁLCULO DE DURACIÓN TOTAL O TRANSCURRIDA (CORREGIDO PARA EVITAR ERROR DE FLOAT VS TIMESTAMP)
+                    fechas_inicio_validas = pd.to_datetime(datos_boleto[cols_fechas_calculo_inicio].dropna(), errors='coerce')
+                    fecha_inicio_boleto = fechas_inicio_validas.min() if not fechas_inicio_validas.empty else pd.NaT
                     
                     if datos_boleto['Estado Actual'] == 'Disfruta Tu Nuevo Toyota':
-                        fecha_fin_boleto = datos_boleto.get('Fecha_de_disfruta_tu_nuevo_Toyota__c', datos_boleto[cols_fechas_desarrollo].max())
+                        fecha_disp = datos_boleto.get('Fecha_de_disfruta_tu_nuevo_Toyota__c')
+                        if pd.notna(fecha_disp):
+                            fecha_fin_boleto = pd.to_datetime(fecha_disp)
+                        else:
+                            fechas_fin_validas = pd.to_datetime(datos_boleto[cols_fechas_desarrollo].dropna(), errors='coerce')
+                            fecha_fin_boleto = fechas_fin_validas.max() if not fechas_fin_validas.empty else pd.NaT
                         texto_duracion = "⏱️ Duración Total"
+                        
                     elif datos_boleto['Estado Actual'] == 'Operación Dada De Baja':
-                        fecha_fin_boleto = datos_boleto.get('Fecha_de_baja__c', datos_boleto[cols_fechas_desarrollo].max())
+                        fecha_baja = datos_boleto.get('Fecha_de_baja__c')
+                        if pd.notna(fecha_baja):
+                            fecha_fin_boleto = pd.to_datetime(fecha_baja)
+                        else:
+                            fechas_fin_validas = pd.to_datetime(datos_boleto[cols_fechas_desarrollo].dropna(), errors='coerce')
+                            fecha_fin_boleto = fechas_fin_validas.max() if not fechas_fin_validas.empty else pd.NaT
                         texto_duracion = "⏱️ Duración hasta Baja"
+                        
                     else:
                         fecha_fin_boleto = pd.Timestamp.now()
                         texto_duracion = "⏱️ Días Transcurridos"
@@ -480,8 +490,10 @@ if df_cargado is not None:
                     hitos, fechas = [], []
                     for col in cols_fechas:
                         if col != 'Fecha_de_entrega_estimada__c' and pd.notna(datos_boleto[col]):
-                            hitos.append(str(col).replace('Fecha_de_', '').replace('Fecha_', '').replace('__c', '').replace('_', ' ').title())
-                            fechas.append(datos_boleto[col])
+                            fecha_valida = pd.to_datetime(datos_boleto[col], errors='coerce')
+                            if pd.notna(fecha_valida):
+                                hitos.append(str(col).replace('Fecha_de_', '').replace('Fecha_', '').replace('__c', '').replace('_', ' ').title())
+                                fechas.append(fecha_valida)
                     
                     if hitos:
                         df_timeline = pd.DataFrame({'Etapa': hitos, 'Fecha': fechas})
@@ -512,7 +524,7 @@ if df_cargado is not None:
                 else:
                     fines_historico = df_finalizados_historico[cols_fechas_desarrollo].max(axis=1)
                     
-                tiempos_finalizacion = (fines_historico - inicios_historico).dt.days
+                tiempos_finalizacion = (pd.to_datetime(fines_historico, errors='coerce') - pd.to_datetime(inicios_historico, errors='coerce')).dt.days
                 promedio_finalizacion = tiempos_finalizacion.mean()
                 col3.metric("Tiempo Promedio de Finalización", f"{promedio_finalizacion:.1f} días" if pd.notna(promedio_finalizacion) else "N/A")
             else:
