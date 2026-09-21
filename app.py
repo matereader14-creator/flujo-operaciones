@@ -51,7 +51,6 @@ else:
 # DIRECTORIO DE CORREOS
 # ==========================================
 diccionario_correos = {
-    # Asesores comerciales
     "Ernesto José Luis Salomón": "ernesto.salomon@autolux.com.ar",
     "Nicolas Scachi": "nicolas.scacchi@autolux.com.ar",
     "Gabriel Lopez Quiroga": "gabriel.quiroga@autolux.com.ar",
@@ -84,7 +83,6 @@ diccionario_correos = {
     "Martín Andrés Diaz": "martin.diaz@autolux.com.ar"
 }
 
-# Lista exclusiva de administradores para enviarles el reporte global
 correos_administradores = {
     "Franco Gallardo": "ventas.especiales@autolux.com.ar",
     "Mariano Walker": "mariano.walker@autolux.com.ar",
@@ -110,7 +108,6 @@ def enviar_correo_personalizado(df_alertas, destinatario, nombre_asesor, es_admi
     msg['To'] = destinatario
     msg['Subject'] = f"⚠️ Alerta de Demoras Operativas - {nombre_asesor} - {pd.Timestamp.now().strftime('%d/%m/%Y')}"
     
-    # Diseño de la tabla
     html_table = df_alertas.to_html(index=False, border=0, justify='center')
     html_table = html_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif;"')
     html_table = html_table.replace('<th>', '<th style="background-color: #d32f2f; color: white; padding: 10px; border: 1px solid #ddd;">')
@@ -261,20 +258,20 @@ if df_cargado is not None:
                     demora = (pd.Timestamp.now() - ultima_fecha).days
             else:
                 demora = 0
+            
+            limite = limites_demora.get(estado_actual, "-")
                 
-            return pd.Series([estado_actual, demora, ultima_fecha])
+            return pd.Series([estado_actual, demora, limite, ultima_fecha])
             
         if df.empty:
             df['Estado Actual'] = pd.Series(dtype='object')
             df['Días en este estado'] = pd.Series(dtype='float64')
+            df['Límite Máximo'] = pd.Series(dtype='object')
             df['Fecha de Último Estado'] = pd.Series(dtype='datetime64[ns]')
             df['Mes'] = pd.Series(dtype='object')
-            df['Límite Máximo'] = pd.Series(dtype='object')
         else:
-            df[['Estado Actual', 'Días en este estado', 'Fecha de Último Estado']] = df.apply(calcular_estado_y_demora, axis=1)
+            df[['Estado Actual', 'Días en este estado', 'Límite Máximo', 'Fecha de Último Estado']] = df.apply(calcular_estado_y_demora, axis=1)
             df['Mes'] = df['Fecha de Último Estado'].dt.to_period('M').astype(str)
-            # Agregar la nueva columna cruzando los estados con el diccionario
-            df['Límite Máximo'] = df['Estado Actual'].apply(lambda x: limites_demora.get(x, "-"))
         
         if df.empty:
             retrasados_mask = pd.Series(False, index=df.index)
@@ -389,7 +386,6 @@ if df_cargado is not None:
                         
                 return styles
 
-            # NUEVA COLUMNA INCLUIDA AQUÍ
             columnas_mostrar = ['Identificador', 'Numero_de_Boleto__c', 'Sucursal_de_Venta__c', 'Denominacion_Comercial__c', 'Nombres_de_Cuenta__c', 'Estado Actual', 'Días en este estado', 'Límite Máximo', 'Fecha de Último Estado', 'Nombre_Asesor__c', 'Comentario']
             columnas_relevantes = [c for c in columnas_mostrar if c in df_tabla.columns]
             
@@ -434,6 +430,46 @@ if df_cargado is not None:
                     )
                     fig_admins.update_layout(showlegend=False)
                     st.plotly_chart(fig_admins, use_container_width=True)
+            
+            # --- NUEVA SECCIÓN: RANKING DE EFICIENCIA ---
+            st.markdown("---")
+            st.subheader("🏆 Ranking de Eficiencia (Tiempo Promedio de Cierre)")
+            
+            df_finalizados = df[df['Estado Actual'] == 'Disfruta Tu Nuevo Toyota'].copy()
+            if not df_finalizados.empty and 'Nombre_Asesor__c' in df_finalizados.columns:
+                inicios_hist = pd.to_datetime(df_finalizados[cols_fechas_calculo_inicio].min(axis=1), errors='coerce')
+                
+                if 'Fecha_de_disfruta_tu_nuevo_Toyota__c' in df_finalizados.columns:
+                    fines_hist = pd.to_datetime(df_finalizados['Fecha_de_disfruta_tu_nuevo_Toyota__c'], errors='coerce')
+                else:
+                    fines_hist = pd.to_datetime(df_finalizados[cols_fechas_desarrollo].max(axis=1), errors='coerce')
+                    
+                df_finalizados['Dias_Ciclo'] = (fines_hist - inicios_hist).dt.days
+                
+                ranking = df_finalizados.groupby('Nombre_Asesor__c')['Dias_Ciclo'].mean().reset_index()
+                ranking = ranking.dropna(subset=['Dias_Ciclo'])
+                # Ordenamos de menor a mayor (más rápido arriba)
+                ranking = ranking.sort_values(by='Dias_Ciclo', ascending=True)
+                ranking['Dias_Ciclo'] = ranking['Dias_Ciclo'].round(1)
+                
+                if not ranking.empty:
+                    fig_ranking = px.bar(
+                        ranking, 
+                        x='Dias_Ciclo', 
+                        y='Nombre_Asesor__c', 
+                        orientation='h',
+                        title='Tiempo Promedio de Cierre por Asesor (Días)', 
+                        text='Dias_Ciclo',
+                        color='Dias_Ciclo',
+                        color_continuous_scale=px.colors.sequential.Teal_r # Colores más oscuros = menos días (mejor)
+                    )
+                    fig_ranking.update_traces(textposition='auto', texttemplate='%{text} días')
+                    fig_ranking.update_layout(yaxis_title="", xaxis_title="Días Promedio (Menos es mejor)")
+                    st.plotly_chart(fig_ranking, use_container_width=True)
+                else:
+                    st.info("No hay suficientes datos válidos de fechas para generar el ranking.")
+            else:
+                st.info("Aún no hay operaciones finalizadas para calcular la eficiencia por asesor.")
 
         with tab_rastreo:
             st.subheader("Línea de Tiempo por Cliente")
@@ -459,7 +495,6 @@ if df_cargado is not None:
                     else:
                         col_info3.metric("📅 Entrega Estimada", "No definida")
                         
-                    # CÁLCULO DE DURACIÓN TOTAL O TRANSCURRIDA
                     fechas_inicio_validas = pd.to_datetime(datos_boleto[cols_fechas_calculo_inicio].dropna(), errors='coerce')
                     fecha_inicio_boleto = fechas_inicio_validas.min() if not fechas_inicio_validas.empty else pd.NaT
                     
@@ -518,7 +553,6 @@ if df_cargado is not None:
             demora_media = vehiculos_pendientes['Días en este estado'].mean() if not vehiculos_pendientes.empty else 0
             col2.metric("Demora Promedio Actual", f"{demora_media:.1f} días" if pd.notna(demora_media) else "0 días")
             
-            # CÁLCULO DE TIEMPO PROMEDIO DE FINALIZACIÓN
             df_finalizados_historico = df[df['Estado Actual'] == 'Disfruta Tu Nuevo Toyota'].copy()
             if not df_finalizados_historico.empty:
                 inicios_historico = df_finalizados_historico[cols_fechas_calculo_inicio].min(axis=1)
@@ -559,22 +593,19 @@ if df_cargado is not None:
             
             if not df_demorados.empty:
                 df_demorados = df_demorados.sort_values(by='Días en este estado', ascending=False)
-                # NUEVA COLUMNA INCLUIDA AQUÍ
                 columnas_demora = ['Identificador', 'Numero_de_Boleto__c', 'Estado Actual', 'Días en este estado', 'Límite Máximo', 'Nombre_Asesor__c', 'Comentario']
                 df_demorados_mostrar = df_demorados[[c for c in columnas_demora if c in df_demorados.columns]]
                 
-                # --- BUSCADOR UNIVERSAL ---
                 busqueda = st.text_input("🔍 Buscar en demoras (Por Asesor, Boleto, Cliente, Estado...):", placeholder="Ej: Perez, 6684715, Confirmado...")
                 if busqueda:
                     mask_busqueda = df_demorados_mostrar.astype(str).apply(lambda x: x.str.contains(busqueda, case=False, na=False)).any(axis=1)
                     df_demorados_mostrar = df_demorados_mostrar[mask_busqueda]
-                # --------------------------------
                 
                 df_editado_demorados = st.data_editor(
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v3"
                 )
                 
                 if df_editado_demorados is not None:
@@ -582,7 +613,6 @@ if df_cargado is not None:
                         df.loc[df['Identificador'] == df_editado_demorados.at[idx, 'Identificador'], 'Comentario'] = df_editado_demorados.at[idx, 'Comentario']
                     df[['Identificador', 'Comentario']].drop_duplicates(subset=['Identificador']).to_csv(ARCHIVO_COMENTARIOS, index=False)
                 
-                # --- GRÁFICO RESUMEN DE DEMORAS POR ASESOR ---
                 if 'Nombre_Asesor__c' in df_editado_demorados.columns and not df_editado_demorados.empty:
                     st.markdown("---")
                     
@@ -613,7 +643,6 @@ if df_cargado is not None:
                     fig_resumen.update_layout(showlegend=False, xaxis_title="Cantidad de Boletos Detenidos", yaxis_title="")
                     
                     st.plotly_chart(fig_resumen, use_container_width=True)
-                # ---------------------------------------------------
                 
                 st.markdown("---")
                 col_b1, col_b2 = st.columns([1, 1])
@@ -624,7 +653,6 @@ if df_cargado is not None:
                     if st.button("📧 Enviar Alerta Personalizada a cada Asesor"):
                         with st.spinner("Procesando y enviando correos (Asesores y Administradores)..."):
                             
-                            # LA NUEVA COLUMNA SE AGREGA AQUÍ TAMBIÉN PARA LOS CORREOS
                             df_mail_completo = df_editado_demorados[['Identificador', 'Estado Actual', 'Días en este estado', 'Límite Máximo', 'Nombre_Asesor__c', 'Comentario']]
                             
                             if 'Nombre_Asesor__c' in df_editado_demorados.columns:
@@ -633,7 +661,6 @@ if df_cargado is not None:
                                 correos_asesores_enviados = 0
                                 asesores_sin_correo = []
                                 
-                                # 1. ENVÍO INDIVIDUAL A ASESORES
                                 for asesor in asesores_con_demora:
                                     df_asesor = df_mail_completo[df_mail_completo['Nombre_Asesor__c'] == asesor].drop(columns=['Nombre_Asesor__c'])
                                     
@@ -654,7 +681,6 @@ if df_cargado is not None:
                                         st.error(f"Falta configurar los Secrets de Streamlit. Detalle: {e}")
                                         break
                                 
-                                # 2. ENVÍO GLOBAL A ADMINISTRADORES
                                 correos_admins_enviados = 0
                                 for nombre_admin, correo_admin in correos_administradores.items():
                                     try:
@@ -662,7 +688,7 @@ if df_cargado is not None:
                                         if exito:
                                             correos_admins_enviados += 1
                                     except Exception as e:
-                                        pass # Si falla uno, que intente con los demás
+                                        pass
                                         
                                 if correos_asesores_enviados > 0 or correos_admins_enviados > 0:
                                     st.success(f"¡Se enviaron exitosamente {correos_asesores_enviados} alertas a Asesores y {correos_admins_enviados} reportes globales a Administradores!")
