@@ -430,46 +430,6 @@ if df_cargado is not None:
                     )
                     fig_admins.update_layout(showlegend=False)
                     st.plotly_chart(fig_admins, use_container_width=True)
-            
-            # --- NUEVA SECCIÓN: RANKING DE EFICIENCIA ---
-            st.markdown("---")
-            st.subheader("🏆 Ranking de Eficiencia (Tiempo Promedio de Cierre)")
-            
-            df_finalizados = df[df['Estado Actual'] == 'Disfruta Tu Nuevo Toyota'].copy()
-            if not df_finalizados.empty and 'Nombre_Asesor__c' in df_finalizados.columns:
-                inicios_hist = pd.to_datetime(df_finalizados[cols_fechas_calculo_inicio].min(axis=1), errors='coerce')
-                
-                if 'Fecha_de_disfruta_tu_nuevo_Toyota__c' in df_finalizados.columns:
-                    fines_hist = pd.to_datetime(df_finalizados['Fecha_de_disfruta_tu_nuevo_Toyota__c'], errors='coerce')
-                else:
-                    fines_hist = pd.to_datetime(df_finalizados[cols_fechas_desarrollo].max(axis=1), errors='coerce')
-                    
-                df_finalizados['Dias_Ciclo'] = (fines_hist - inicios_hist).dt.days
-                
-                ranking = df_finalizados.groupby('Nombre_Asesor__c')['Dias_Ciclo'].mean().reset_index()
-                ranking = ranking.dropna(subset=['Dias_Ciclo'])
-                # Ordenamos de menor a mayor (más rápido arriba)
-                ranking = ranking.sort_values(by='Dias_Ciclo', ascending=True)
-                ranking['Dias_Ciclo'] = ranking['Dias_Ciclo'].round(1)
-                
-                if not ranking.empty:
-                    fig_ranking = px.bar(
-                        ranking, 
-                        x='Dias_Ciclo', 
-                        y='Nombre_Asesor__c', 
-                        orientation='h',
-                        title='Tiempo Promedio de Cierre por Asesor (Días)', 
-                        text='Dias_Ciclo',
-                        color='Dias_Ciclo',
-                        color_continuous_scale=px.colors.sequential.Teal_r # Colores más oscuros = menos días (mejor)
-                    )
-                    fig_ranking.update_traces(textposition='auto', texttemplate='%{text} días')
-                    fig_ranking.update_layout(yaxis_title="", xaxis_title="Días Promedio (Menos es mejor)")
-                    st.plotly_chart(fig_ranking, use_container_width=True)
-                else:
-                    st.info("No hay suficientes datos válidos de fechas para generar el ranking.")
-            else:
-                st.info("Aún no hay operaciones finalizadas para calcular la eficiencia por asesor.")
 
         with tab_rastreo:
             st.subheader("Línea de Tiempo por Cliente")
@@ -577,15 +537,6 @@ if df_cargado is not None:
             fig_cuellos = px.bar(df_cuellos, x='Boletos Detenidos', y='Etapa', orientation='h', title='Volumen estancado por proceso', color='Boletos Detenidos', color_continuous_scale=['#f0f2f6', '#ff4b4b'])
             fig_cuellos.update_layout(showlegend=False)
             st.plotly_chart(fig_cuellos, use_container_width=True)
-            
-            st.markdown("---")
-            if not vehiculos_pendientes.empty:
-                historico = vehiculos_pendientes.groupby('Mes')['Días en este estado'].mean().reset_index()
-                historico = historico[historico['Mes'] != 'NaT'].sort_values(by='Mes')
-                if not historico.empty:
-                    fig_linea = px.line(historico, x='Mes', y='Días en este estado', title="Evolución Histórica de Demoras", markers=True)
-                    fig_linea.update_traces(line_color='red') 
-                    st.plotly_chart(fig_linea, use_container_width=True)
                 
         with tab_alertas:
             st.subheader("⚠️ Registro de Boletos Demorados")
@@ -605,7 +556,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v3"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v4"
                 )
                 
                 if df_editado_demorados is not None:
