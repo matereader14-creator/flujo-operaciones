@@ -333,52 +333,17 @@ if df_cargado is not None:
             return salida.getvalue()
 
         # ==========================================
-        # CREACIÓN DE PESTAÑAS
+        # CREACIÓN DE PESTAÑAS (ORDEN MODIFICADO)
         # ==========================================
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "👥 Rendimiento", 
+        tab_auditoria, tab_rendimiento, tab_rastreo, tab_flujo, tab_alertas = st.tabs([
             "🔍 Auditoría",
+            "👥 Rendimiento", 
             "🔎 Rastreo",
             "📊 Flujo",
             "⚠️ Alertas de Demora"
         ])
         
-        with tab1:
-            st.subheader("Carga de Trabajo Operativo")
-            colA, colB = st.columns(2)
-            with colA:
-                if 'Nombre_Asesor__c' in df.columns and not df.empty:
-                    vendedores = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
-                    vendedores = vendedores.sort_values(by='Operaciones', ascending=False)
-                    
-                    fig_vendedores = px.bar(
-                        vendedores, 
-                        x='Nombre_Asesor__c', 
-                        y='Operaciones', 
-                        title='Operaciones por Asesor', 
-                        color='Nombre_Asesor__c', 
-                        color_discrete_sequence=px.colors.qualitative.Dark24
-                    )
-                    fig_vendedores.update_layout(showlegend=False)
-                    st.plotly_chart(fig_vendedores, use_container_width=True)
-                    
-            with colB:
-                if 'Perfil_usuario__c' in df.columns and not df.empty:
-                    admins = df.groupby('Perfil_usuario__c').size().reset_index(name='Operaciones')
-                    admins = admins.sort_values(by='Operaciones', ascending=False)
-                    
-                    fig_admins = px.bar(
-                        admins, 
-                        x='Perfil_usuario__c', 
-                        y='Operaciones', 
-                        title='Operaciones por Administrativo', 
-                        color='Perfil_usuario__c', 
-                        color_discrete_sequence=px.colors.qualitative.Dark24
-                    )
-                    fig_admins.update_layout(showlegend=False)
-                    st.plotly_chart(fig_admins, use_container_width=True)
-
-        with tab2:
+        with tab_auditoria:
             st.subheader("Auditoría y Detalles de Operaciones")
             total_boletos = len(df)
             total_finalizados = len(df[df['Estado Actual'] == 'Disfruta Tu Nuevo Toyota'])
@@ -431,7 +396,42 @@ if df_cargado is not None:
             
             st.download_button("📥 Descargar tabla de Auditoría (Excel)", data=convertir_df_a_excel(df_tabla[columnas_relevantes]), file_name=f'Auditoria_Boletos.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
-        with tab3:
+        with tab_rendimiento:
+            st.subheader("Carga de Trabajo Operativo")
+            colA, colB = st.columns(2)
+            with colA:
+                if 'Nombre_Asesor__c' in df.columns and not df.empty:
+                    vendedores = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
+                    vendedores = vendedores.sort_values(by='Operaciones', ascending=False)
+                    
+                    fig_vendedores = px.bar(
+                        vendedores, 
+                        x='Nombre_Asesor__c', 
+                        y='Operaciones', 
+                        title='Operaciones por Asesor', 
+                        color='Nombre_Asesor__c', 
+                        color_discrete_sequence=px.colors.qualitative.Dark24
+                    )
+                    fig_vendedores.update_layout(showlegend=False)
+                    st.plotly_chart(fig_vendedores, use_container_width=True)
+                    
+            with colB:
+                if 'Perfil_usuario__c' in df.columns and not df.empty:
+                    admins = df.groupby('Perfil_usuario__c').size().reset_index(name='Operaciones')
+                    admins = admins.sort_values(by='Operaciones', ascending=False)
+                    
+                    fig_admins = px.bar(
+                        admins, 
+                        x='Perfil_usuario__c', 
+                        y='Operaciones', 
+                        title='Operaciones por Administrativo', 
+                        color='Perfil_usuario__c', 
+                        color_discrete_sequence=px.colors.qualitative.Dark24
+                    )
+                    fig_admins.update_layout(showlegend=False)
+                    st.plotly_chart(fig_admins, use_container_width=True)
+
+        with tab_rastreo:
             st.subheader("Línea de Tiempo por Cliente")
             if 'Identificador' in df.columns and not df.empty:
                 seleccion = st.selectbox("Escribe o selecciona el nombre del cliente o boleto:", sorted(df['Identificador'].unique()), index=None, placeholder="Ej: PEREZ JUAN...")
@@ -455,7 +455,7 @@ if df_cargado is not None:
                     else:
                         col_info3.metric("📅 Entrega Estimada", "No definida")
                         
-                    # CÁLCULO DE DURACIÓN TOTAL O TRANSCURRIDA (CORREGIDO PARA EVITAR ERROR DE FLOAT VS TIMESTAMP)
+                    # CÁLCULO DE DURACIÓN TOTAL O TRANSCURRIDA
                     fechas_inicio_validas = pd.to_datetime(datos_boleto[cols_fechas_calculo_inicio].dropna(), errors='coerce')
                     fecha_inicio_boleto = fechas_inicio_validas.min() if not fechas_inicio_validas.empty else pd.NaT
                     
@@ -506,7 +506,7 @@ if df_cargado is not None:
                         fig_timeline.update_yaxes(categoryorder='array', categoryarray=orden_ideal, autorange="reversed")
                         st.plotly_chart(fig_timeline, use_container_width=True)
 
-        with tab4:
+        with tab_flujo:
             st.subheader("Visión General del Flujo")
             col1, col2, col3 = st.columns(3)
             col1.metric("Operaciones (Boletos)", len(df))
@@ -549,7 +549,7 @@ if df_cargado is not None:
                     fig_linea.update_traces(line_color='red') 
                     st.plotly_chart(fig_linea, use_container_width=True)
                 
-        with tab5:
+        with tab_alertas:
             st.subheader("⚠️ Registro de Boletos Demorados")
             df_demorados = df[retrasados_mask].copy()
             
@@ -670,3 +670,4 @@ if df_cargado is not None:
 
     except Exception as e:
         st.error(f"Error procesando la base de datos. (Detalle: {e})")
+        
