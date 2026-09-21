@@ -180,6 +180,7 @@ if df_cargado is not None:
             
         # FILTRO ESTRICTO DE 2026 (Excluyendo Fecha_de_entrega_estimada__c)
         cols_fechas_desarrollo = [c for c in cols_fechas if 'entrega_estimada' not in str(c).lower()]
+        cols_fechas_calculo_inicio = [c for c in cols_fechas_desarrollo if 'baja' not in str(c).lower()]
         
         # 1. Descartar boletos que no tengan absolutamente ninguna fecha de desarrollo válida
         df = df.dropna(subset=cols_fechas_desarrollo, how='all')
@@ -439,7 +440,7 @@ if df_cargado is not None:
                 seleccion = st.selectbox("Escribe o selecciona el nombre del cliente o boleto:", sorted(df['Identificador'].unique()), index=None, placeholder="Ej: PEREZ JUAN...")
                 if seleccion:
                     datos_boleto = df[df['Identificador'] == seleccion].iloc[0]
-                    col_info1, col_info2, col_info3 = st.columns(3)
+                    col_info1, col_info2, col_info3, col_info4 = st.columns(4)
                     col_info1.info(f"**Estado Actual:** {datos_boleto['Estado Actual']}")
                     
                     if datos_boleto['Estado Actual'] == "Disfruta Tu Nuevo Toyota":
@@ -456,6 +457,25 @@ if df_cargado is not None:
                         col_info3.metric("📅 Entrega Estimada", datos_boleto['Fecha_de_entrega_estimada__c'].strftime('%d-%b-%Y'))
                     else:
                         col_info3.metric("📅 Entrega Estimada", "No definida")
+                        
+                    # CÁLCULO DE DURACIÓN TOTAL O TRANSCURRIDA
+                    fecha_inicio_boleto = datos_boleto[cols_fechas_calculo_inicio].min()
+                    
+                    if datos_boleto['Estado Actual'] == 'Disfruta Tu Nuevo Toyota':
+                        fecha_fin_boleto = datos_boleto.get('Fecha_de_disfruta_tu_nuevo_Toyota__c', datos_boleto[cols_fechas_desarrollo].max())
+                        texto_duracion = "⏱️ Duración Total"
+                    elif datos_boleto['Estado Actual'] == 'Operación Dada De Baja':
+                        fecha_fin_boleto = datos_boleto.get('Fecha_de_baja__c', datos_boleto[cols_fechas_desarrollo].max())
+                        texto_duracion = "⏱️ Duración hasta Baja"
+                    else:
+                        fecha_fin_boleto = pd.Timestamp.now()
+                        texto_duracion = "⏱️ Días Transcurridos"
+                        
+                    if pd.notna(fecha_inicio_boleto) and pd.notna(fecha_fin_boleto):
+                        dias_totales_boleto = (fecha_fin_boleto - fecha_inicio_boleto).days
+                        col_info4.metric(texto_duracion, f"{max(0, dias_totales_boleto)} días")
+                    else:
+                        col_info4.metric(texto_duracion, "No calculable")
                     
                     hitos, fechas = [], []
                     for col in cols_fechas:
@@ -481,6 +501,22 @@ if df_cargado is not None:
             vehiculos_pendientes = df[(df['Estado Actual'] != 'Disfruta Tu Nuevo Toyota') & (df['Estado Actual'] != 'Operación Dada De Baja')]
             demora_media = vehiculos_pendientes['Días en este estado'].mean() if not vehiculos_pendientes.empty else 0
             col2.metric("Demora Promedio Actual", f"{demora_media:.1f} días" if pd.notna(demora_media) else "0 días")
+            
+            # CÁLCULO DE TIEMPO PROMEDIO DE FINALIZACIÓN
+            df_finalizados_historico = df[df['Estado Actual'] == 'Disfruta Tu Nuevo Toyota'].copy()
+            if not df_finalizados_historico.empty:
+                inicios_historico = df_finalizados_historico[cols_fechas_calculo_inicio].min(axis=1)
+                
+                if 'Fecha_de_disfruta_tu_nuevo_Toyota__c' in df_finalizados_historico.columns:
+                    fines_historico = df_finalizados_historico['Fecha_de_disfruta_tu_nuevo_Toyota__c']
+                else:
+                    fines_historico = df_finalizados_historico[cols_fechas_desarrollo].max(axis=1)
+                    
+                tiempos_finalizacion = (fines_historico - inicios_historico).dt.days
+                promedio_finalizacion = tiempos_finalizacion.mean()
+                col3.metric("Tiempo Promedio de Finalización", f"{promedio_finalizacion:.1f} días" if pd.notna(promedio_finalizacion) else "N/A")
+            else:
+                col3.metric("Tiempo Promedio de Finalización", "0 días")
             
             st.markdown("---")
             st.subheader("Cuellos de Botella: Boletos en cada etapa")
