@@ -174,7 +174,6 @@ if df_cargado is not None:
         for col in cols_fechas:
             df[col] = pd.to_datetime(df[col], errors='coerce')
             
-        # FILTRO ESTRICTO DE 2026
         cols_fechas_desarrollo = [c for c in cols_fechas if 'entrega_estimada' not in str(c).lower()]
         cols_fechas_calculo_inicio = [c for c in cols_fechas_desarrollo if 'baja' not in str(c).lower()]
         
@@ -275,10 +274,18 @@ if df_cargado is not None:
         
         if df.empty:
             retrasados_mask = pd.Series(False, index=df.index)
+            amarillos_mask = pd.Series(False, index=df.index)
         else:
             retrasados_mask = df.apply(
                 lambda x: x['Días en este estado'] > limites_demora.get(x['Estado Actual'], 5) 
                 if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False, 
+                axis=1
+            )
+            # Máscara para alerta amarilla (80% o más del límite, sin llegar a estar vencido)
+            amarillos_mask = df.apply(
+                lambda x: (x['Días en este estado'] >= limites_demora.get(x['Estado Actual'], 5) * 0.8) and 
+                          (x['Días en este estado'] <= limites_demora.get(x['Estado Actual'], 5))
+                if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False,
                 axis=1
             )
         
@@ -303,6 +310,12 @@ if df_cargado is not None:
                 if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False, 
                 axis=1
             )
+            amarillos_mask = df.apply(
+                lambda x: (x['Días en este estado'] >= limites_demora.get(x['Estado Actual'], 5) * 0.8) and 
+                          (x['Días en este estado'] <= limites_demora.get(x['Estado Actual'], 5))
+                if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False,
+                axis=1
+            )
 
         if 'Sucursal_de_Venta__c' in df.columns:
             sucursales_limpias = [str(s) for s in df['Sucursal_de_Venta__c'].unique() if str(s) not in ('nan', 'None', 'NaT') and pd.notna(s)]
@@ -323,6 +336,12 @@ if df_cargado is not None:
                     retrasados_mask = df.apply(
                         lambda x: x['Días en este estado'] > limites_demora.get(x['Estado Actual'], 5) 
                         if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False, 
+                        axis=1
+                    )
+                    amarillos_mask = df.apply(
+                        lambda x: (x['Días en este estado'] >= limites_demora.get(x['Estado Actual'], 5) * 0.8) and 
+                                  (x['Días en este estado'] <= limites_demora.get(x['Estado Actual'], 5))
+                        if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False,
                         axis=1
                     )
         
@@ -348,13 +367,15 @@ if df_cargado is not None:
             total_boletos = len(df)
             total_finalizados = len(df[df['Estado Actual'] == 'Disfruta Tu Nuevo Toyota'])
             total_bajas = len(df[df['Estado Actual'] == 'Operación Dada De Baja'])
+            total_amarillos = amarillos_mask.sum()
             total_retrasados = retrasados_mask.sum()
             
-            c1, c2, c3, c4 = st.columns(4)
+            c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("📁 Total Boletos", total_boletos)
             c2.metric("✅ Finalizados", total_finalizados)
             c3.metric("❌ Bajas", total_bajas)
-            c4.metric("⚠️ Operaciones con Retraso", total_retrasados)
+            c4.metric("🟡 Alerta Preventiva", total_amarillos)
+            c5.metric("⚠️ Retrasados", total_retrasados)
             
             st.markdown("---")
             st.write("**Explorar boletos por estado específico:**")
@@ -371,6 +392,7 @@ if df_cargado is not None:
                 styles = [''] * len(row)
                 estado = row.get('Estado Actual', '')
                 dias = row.get('Días en este estado', 0)
+                limite = limites_demora.get(estado, 5)
                 
                 if 'Estado Actual' in row.index:
                     idx_estado = row.index.get_loc('Estado Actual')
@@ -380,9 +402,11 @@ if df_cargado is not None:
                         styles[idx_estado] = 'background-color: rgba(149, 165, 166, 0.4); color: #7f8c8d; font-style: italic;'
                         
                 if 'Días en este estado' in row.index and estado not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja']:
-                    if dias > limites_demora.get(estado, 5):
-                        idx_dias = row.index.get_loc('Días en este estado')
+                    idx_dias = row.index.get_loc('Días en este estado')
+                    if dias > limite:
                         styles[idx_dias] = 'background-color: rgba(255, 75, 75, 0.3); color: #c0392b; font-weight: bold;'
+                    elif dias >= limite * 0.8:
+                        styles[idx_dias] = 'background-color: rgba(241, 196, 15, 0.3); color: #d68910; font-weight: bold;'
                         
                 return styles
 
@@ -430,6 +454,7 @@ if df_cargado is not None:
                         dias_actuales = datos_boleto['Días en este estado']
                         limite = limites_demora.get(datos_boleto['Estado Actual'], 5)
                         if dias_actuales > limite: col_info2.error(f"⚠️ **RETRASADO:** {dias_actuales} días estancado.")
+                        elif dias_actuales >= limite * 0.8: col_info2.warning(f"🟡 **PRECAUCIÓN:** {dias_actuales}/{limite} días consumidos.")
                         else: col_info2.info(f"⏳ **A tiempo:** Lleva {dias_actuales} días.")
                     
                     if 'Fecha_de_entrega_estimada__c' in df.columns and pd.notna(datos_boleto['Fecha_de_entrega_estimada__c']):
@@ -538,7 +563,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v5"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v6"
                 )
                 
                 if df_editado_demorados is not None:
