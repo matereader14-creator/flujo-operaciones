@@ -48,17 +48,57 @@ else:
     st.sidebar.warning("Link de Google Sheets no configurado.")
 
 # ==========================================
-# DIRECTORIO DE CORREOS DE ASESORES
+# DIRECTORIO DE CORREOS
 # ==========================================
-# PRONTO AGREGAREMOS AQUÍ LOS CORREOS REALES
 diccionario_correos = {
-    # "Nombre exacto del asesor": "correo@ejemplo.com",
+    # Asesores comerciales
+    "Ernesto José Luis Salomón": "ernesto.salomon@autolux.com.ar",
+    "Nicolas Scachi": "nicolas.scacchi@autolux.com.ar",
+    "Gabriel Lopez Quiroga": "gabriel.quiroga@autolux.com.ar",
+    "Matias Bravo": "matias.bravo@autolux.com.ar",
+    "Jorge Agustín Gonzalez": "jorge.gonzalez@autolux.com.ar",
+    "Franco Oscar Lesser": "franco.lesser@autolux.com.ar",
+    "Vilma Viviana Carabajal": "vilma.carabajal@autolux.com.ar",
+    "Arnaldo Denis Peralta": "arnaldo.peralta@autolux.com.ar",
+    "Nicolas Elbio Cordoba": "nicolas.cordoba@autolux.com.ar",
+    "María Cecilia Fernandez": "cecilia.fernandez@autolux.com.ar",
+    "Nadia Macar Fernandez Colletti": "nadia.fernandez@autolux.com.ar",
+    "Facundo Gabriel Ponce Cavion": "facundo.ponce@autolux.com.ar",
+    "Pablo Carrizo": "pablo.carrizo@cenoa.com.ar",
+    "Romina Romagnoli": "romina.romagnoli@autolux.com.ar",
+    "Guillermo Nallim": "guillermo.nallim@autolux.com.ar",
+    "Mauro Aramayo": "mauro.aramayo@autolux.com.ar",
+    "Luis Humano": "luis.humano@autolux.com.ar",
+    "Gonzalo Daniel Ponce Cavion": "gonzalo.ponce@autolux.com.ar",
+    "Gustavo Enrique Arias Mazza": "gustavo.arias@autolux.com.ar",
+    "Jose Amoros": "jose.amoros@autolux.com.ar",
+    "Gustavo Cabezas": "gustavo.cabezas@autolux.com.ar",
+    "Jose Siñanez": "jose.siñanez@autolux.com.ar",
+    "Soledad Zamora": "soledad.zamora@autolux.com.ar",
+    "Cristian Noblega": "cristian.noblega@autolux.com.ar",
+    "Faustino Ezequiel Cardozo": "ezequiel.cardozo@autolux.com.ar",
+    "Daniel Flores": "daniel.flores@autolux.com.ar",
+    "Gonzalo Martinez": "gonzalo.martinez@autolux.com.ar",
+    "Leonel Mamani": "leonel.mamani@autolux.com.ar",
+    "Cecilia Diaz": "cecilia.diaz@autolux.com.ar",
+    "Martín Andrés Diaz": "martin.diaz@autolux.com.ar"
+}
+
+# Lista exclusiva de administradores para enviarles el reporte global
+correos_administradores = {
+    "Franco Gallardo": "ventas.especiales@autolux.com.ar",
+    "Mariano Walker": "mariano.walker@autolux.com.ar",
+    "Mariano (Créditos)": "creditos.salta@autolux.com.ar",
+    "Luis Ledesma": "luis.ledesma@autolux.com.ar",
+    "Alfoncina Gianibelli": "alfonsina.gianibelli@autolux.com.ar",
+    "Karen Diaz": "karen.diaz@autolux.com.ar",
+    "Eugenia Alvarez": "maria.alvarez@autolux.com.ar"
 }
 
 # ==========================================
 # FUNCIÓN PARA ENVIAR CORREOS
 # ==========================================
-def enviar_correo_personalizado(df_alertas, destinatario, nombre_asesor):
+def enviar_correo_personalizado(df_alertas, destinatario, nombre_asesor, es_admin=False):
     try:
         remitente = st.secrets["EMAIL_REMITENTE"]
         password = st.secrets["EMAIL_PASSWORD"]
@@ -76,12 +116,18 @@ def enviar_correo_personalizado(df_alertas, destinatario, nombre_asesor):
     html_table = html_table.replace('<th>', '<th style="background-color: #d32f2f; color: white; padding: 10px; border: 1px solid #ddd;">')
     html_table = html_table.replace('<td>', '<td style="padding: 10px; border: 1px solid #ddd; text-align: center;">')
     
+    # Adaptar el texto si es administrador o asesor
+    if es_admin:
+        intro_texto = "El sistema ha detectado el siguiente listado GENERAL de todos los boletos de la empresa que superan el tiempo límite establecido para su etapa de proceso. Este es un reporte global recordatorio de todas las demoras actuales:"
+    else:
+        intro_texto = "El sistema ha detectado que los siguientes boletos a tu cargo superan el tiempo límite establecido para su etapa de proceso. Por favor, revisar la situación de cada uno y actualizar el estado o dejar un comentario en la plataforma:"
+    
     html_body = f"""
     <html>
     <body>
         <h2 style="color: #d32f2f; font-family: Arial, sans-serif;">Reporte de Boletos con Retraso Operativo</h2>
         <p style="font-family: Arial, sans-serif; font-size: 14px;">Hola <b>{nombre_asesor}</b>,</p>
-        <p style="font-family: Arial, sans-serif; font-size: 14px;">El sistema ha detectado que los siguientes boletos a tu cargo superan el tiempo límite establecido para su etapa de proceso. Por favor, revisar la situación de cada uno y actualizar el estado o dejar un comentario en la plataforma:</p>
+        <p style="font-family: Arial, sans-serif; font-size: 14px;">{intro_texto}</p>
         {html_table}
         <br>
         <p style="font-family: Arial, sans-serif; font-size: 12px; color: #777;">Este es un mensaje automático generado por la Plataforma de Seguimiento de Operaciones de Calidad LUX.</p>
@@ -523,18 +569,19 @@ if df_cargado is not None:
                 
                 with col_b2:
                     if st.button("📧 Enviar Alerta Personalizada a cada Asesor"):
-                        with st.spinner("Procesando y enviando correos individuales..."):
+                        with st.spinner("Procesando y enviando correos (Asesores y Administradores)..."):
                             
-                            df_mail = df_editado_demorados[['Identificador', 'Estado Actual', 'Días en este estado', 'Comentario']]
+                            df_mail_completo = df_editado_demorados[['Identificador', 'Estado Actual', 'Días en este estado', 'Nombre_Asesor__c', 'Comentario']]
                             
                             if 'Nombre_Asesor__c' in df_editado_demorados.columns:
                                 asesores_con_demora = df_editado_demorados['Nombre_Asesor__c'].dropna().unique()
                                 
-                                correos_enviados = 0
+                                correos_asesores_enviados = 0
                                 asesores_sin_correo = []
                                 
+                                # 1. ENVÍO INDIVIDUAL A ASESORES
                                 for asesor in asesores_con_demora:
-                                    df_asesor = df_mail[df_editado_demorados['Nombre_Asesor__c'] == asesor]
+                                    df_asesor = df_mail_completo[df_mail_completo['Nombre_Asesor__c'] == asesor].drop(columns=['Nombre_Asesor__c'])
                                     
                                     try:
                                         correo_destino = diccionario_correos.get(asesor.strip(), st.secrets["EMAIL_DESTINO"])
@@ -545,16 +592,26 @@ if df_cargado is not None:
                                         else:
                                             nombre_mensaje = asesor
                                             
-                                        exito, msj = enviar_correo_personalizado(df_asesor, correo_destino, nombre_mensaje)
+                                        exito, msj = enviar_correo_personalizado(df_asesor, correo_destino, nombre_mensaje, es_admin=False)
                                         if exito: 
-                                            correos_enviados += 1
+                                            correos_asesores_enviados += 1
                                             
                                     except Exception as e:
                                         st.error(f"Falta configurar los Secrets de Streamlit. Detalle: {e}")
                                         break
                                 
-                                if correos_enviados > 0:
-                                    st.success(f"¡Se enviaron {correos_enviados} correos personalizados exitosamente!")
+                                # 2. ENVÍO GLOBAL A ADMINISTRADORES
+                                correos_admins_enviados = 0
+                                for nombre_admin, correo_admin in correos_administradores.items():
+                                    try:
+                                        exito, msj = enviar_correo_personalizado(df_mail_completo, correo_admin, nombre_admin, es_admin=True)
+                                        if exito:
+                                            correos_admins_enviados += 1
+                                    except Exception as e:
+                                        pass # Si falla uno, que intente con los demás
+                                        
+                                if correos_asesores_enviados > 0 or correos_admins_enviados > 0:
+                                    st.success(f"¡Se enviaron exitosamente {correos_asesores_enviados} alertas a Asesores y {correos_admins_enviados} reportes globales a Administradores!")
                                     if asesores_sin_correo:
                                         st.warning(f"Nota: Los siguientes asesores no estaban en el diccionario y sus reportes se enviaron al correo de supervisión: {', '.join(asesores_sin_correo)}")
                             else:
