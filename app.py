@@ -6,6 +6,7 @@ import plotly.express as px
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import pytz
 
 # 1. Configuración principal de la página
 st.set_page_config(page_title="Flujo de Operaciones", layout="wide", page_icon="📊")
@@ -179,12 +180,14 @@ if df_cargado is not None:
         
         df = df.dropna(subset=cols_fechas_desarrollo, how='all')
         
+        # Filtro estricto de año 2026
         mask_2026 = pd.Series(False, index=df.index)
         for col in cols_fechas_desarrollo:
             mask_2026 = mask_2026 | (df[col].dt.year == 2026)
         
         df = df[mask_2026].copy()
         
+        # Limites de demora (Sin Insc de Prenda)
         limites_demora = {
             "Ingreso Pendiente": 1,
             "Creacion En Siac": 1,
@@ -281,7 +284,6 @@ if df_cargado is not None:
                 if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False, 
                 axis=1
             )
-            # Máscara para alerta amarilla (80% o más del límite, sin llegar a estar vencido)
             amarillos_mask = df.apply(
                 lambda x: (x['Días en este estado'] >= limites_demora.get(x['Estado Actual'], 5) * 0.8) and 
                           (x['Días en este estado'] <= limites_demora.get(x['Estado Actual'], 5))
@@ -296,12 +298,15 @@ if df_cargado is not None:
         meses_disponibles = sorted(meses_limpios)
         opciones_mes = ["Todos los meses"] + meses_disponibles
         
-        mes_actual = pd.Timestamp.now().strftime('%Y-%m') 
+        # --- MES PREDETERMINADO AUTOMÁTICO DE ARGENTINA ---
+        zona_horaria_ar = pytz.timezone('America/Argentina/Buenos_Aires')
+        mes_actual = pd.Timestamp.now(tz=zona_horaria_ar).strftime('%Y-%m') 
+        
         idx_mes_defecto = 0
         if mes_actual in opciones_mes:
             idx_mes_defecto = opciones_mes.index(mes_actual)
             
-        mes_seleccionado = st.sidebar.selectbox("Seleccionar Mes (2026):", opciones_mes, index=idx_mes_defecto)
+        mes_seleccionado = st.sidebar.selectbox("Seleccionar Mes:", opciones_mes, index=idx_mes_defecto)
         
         if mes_seleccionado != "Todos los meses":
             df = df[df['Mes'] == mes_seleccionado].copy()
@@ -563,7 +568,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v6"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v13"
                 )
                 
                 if df_editado_demorados is not None:
