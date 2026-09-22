@@ -281,6 +281,7 @@ if df_cargado is not None:
                 if x['Estado Actual'] not in ['Disfruta Tu Nuevo Toyota', 'Operación Dada De Baja'] else False, 
                 axis=1
             )
+            # Máscara para alerta amarilla (80% o más del límite, sin llegar a estar vencido)
             amarillos_mask = df.apply(
                 lambda x: (x['Días en este estado'] >= limites_demora.get(x['Estado Actual'], 5) * 0.8) and 
                           (x['Días en este estado'] <= limites_demora.get(x['Estado Actual'], 5))
@@ -562,7 +563,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v9"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v6"
                 )
                 
                 if df_editado_demorados is not None:
