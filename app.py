@@ -185,7 +185,6 @@ if df_cargado is not None:
         
         df = df[mask_2026].copy()
         
-        # LÍMITES DE DEMORA ACTUALIZADOS CON LA NUEVA ETAPA
         limites_demora = {
             "Ingreso Pendiente": 1,
             "Creacion En Siac": 1,
@@ -195,7 +194,6 @@ if df_cargado is not None:
             "En Proceso De Pago": 5,
             "Facturacion": 3,
             "Poliza De Seguro": 2,
-            "Insc De Prenda": 18,
             "En Proceso De Patentamiento": 15,
             "En Proceso De Entrega": 1
         }
@@ -207,7 +205,7 @@ if df_cargado is not None:
             columnas_ordenadas = [
                 'Fecha_de_creacion_en_SIAC__c', 'Fecha_de_proboleto_aprobado__c', 'Fecha_de_pedido_confirmado__c', 
                 'Fecha_de_firma_del_boleto__c', 'Fecha_de_en_proceso_de_pago__c', 'Fecha_de_Facturacion__c', 
-                'Fecha_de_Poliza_de_Seguro__c', 'Fecha_Insc_de_Prenda__c', 'Fecha_en_Proceso_de_Patentamiento__c', 
+                'Fecha_de_Poliza_de_Seguro__c', 'Fecha_en_Proceso_de_Patentamiento__c', 
                 'Fecha_de_en_proceso_de_entrega__c', 
                 'Fecha_de_disfruta_tu_nuevo_Toyota__c'
             ]
@@ -381,7 +379,7 @@ if df_cargado is not None:
             st.markdown("---")
             st.write("**Explorar boletos por estado específico:**")
             
-            orden_filtro = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "Insc De Prenda", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Operación Dada De Baja"]
+            orden_filtro = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Operación Dada De Baja"]
             estados_en_df = df['Estado Actual'].unique()
             estados_disponibles = [e for e in orden_filtro if e in estados_en_df] + [e for e in estados_en_df if e not in orden_filtro]
             
@@ -504,7 +502,7 @@ if df_cargado is not None:
                     
                     if hitos:
                         df_timeline = pd.DataFrame({'Etapa': hitos, 'Fecha': fechas})
-                        orden_ideal = ["Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "Insc De Prenda", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Baja"]
+                        orden_ideal = ["Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Baja"]
                         df_timeline['Etapa'] = pd.Categorical(df_timeline['Etapa'], categories=orden_ideal, ordered=True)
                         df_timeline = df_timeline.sort_values(by='Etapa')
                         
@@ -538,7 +536,7 @@ if df_cargado is not None:
             
             st.markdown("---")
             st.subheader("Cuellos de Botella: Boletos en cada etapa")
-            lista_etapas = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "Insc De Prenda", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Operación Dada De Baja"]
+            lista_etapas = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Operación Dada De Baja"]
             conteos_estado = df['Estado Actual'].value_counts().to_dict()
             df_cuellos = pd.DataFrame([{'Etapa': e, 'Boletos Detenidos': conteos_estado.get(e, 0)} for e in reversed(lista_etapas)])
             
@@ -564,7 +562,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v7"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v9"
                 )
                 
                 if df_editado_demorados is not None:
