@@ -6,7 +6,6 @@ import plotly.express as px
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import pytz
 
 # 1. Configuración principal de la página
 st.set_page_config(page_title="Flujo de Operaciones", layout="wide", page_icon="📊")
@@ -298,9 +297,10 @@ if df_cargado is not None:
         meses_disponibles = sorted(meses_limpios)
         opciones_mes = ["Todos los meses"] + meses_disponibles
         
-        # --- MES PREDETERMINADO AUTOMÁTICO DE ARGENTINA ---
-        zona_horaria_ar = pytz.timezone('America/Argentina/Buenos_Aires')
-        mes_actual = pd.Timestamp.now(tz=zona_horaria_ar).strftime('%Y-%m') 
+        # --- MES PREDETERMINADO AUTOMÁTICO (NATIVO, SIN PYTZ) ---
+        # pd.Timestamp.now() toma la hora local del servidor, pero le restamos 3 horas 
+        # manualmente para forzar la coincidencia con el huso horario de Argentina (UTC-3).
+        mes_actual = (pd.Timestamp.utcnow() - pd.Timedelta(hours=3)).strftime('%Y-%m') 
         
         idx_mes_defecto = 0
         if mes_actual in opciones_mes:
@@ -568,7 +568,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v13"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v14"
                 )
                 
                 if df_editado_demorados is not None:
