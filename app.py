@@ -6,6 +6,7 @@ import plotly.express as px
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import pytz
 
 # 1. Configuración principal de la página
 st.set_page_config(page_title="Flujo de Operaciones", layout="wide", page_icon="📊")
@@ -94,9 +95,9 @@ correos_administradores = {
 }
 
 # ==========================================
-# FUNCIÓN PARA ENVIAR CORREOS
+# FUNCIÓN PARA ENVIAR CORREOS CRUZADOS
 # ==========================================
-def enviar_correo_personalizado(df_alertas, destinatario, nombre_asesor, es_admin=False):
+def enviar_correo_personalizado(df_alertas, destinatario, cc, asunto, saludo, intro_texto):
     try:
         remitente = st.secrets["EMAIL_REMITENTE"]
         password = st.secrets["EMAIL_PASSWORD"]
@@ -106,23 +107,20 @@ def enviar_correo_personalizado(df_alertas, destinatario, nombre_asesor, es_admi
     msg = MIMEMultipart()
     msg['From'] = remitente
     msg['To'] = destinatario
-    msg['Subject'] = f"⚠️ Alerta de Demoras Operativas - {nombre_asesor} - {pd.Timestamp.now().strftime('%d/%m/%Y')}"
+    if cc:
+        msg['Cc'] = cc
+    msg['Subject'] = asunto
     
     html_table = df_alertas.to_html(index=False, border=0, justify='center')
     html_table = html_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif;"')
     html_table = html_table.replace('<th>', '<th style="background-color: #d32f2f; color: white; padding: 10px; border: 1px solid #ddd;">')
     html_table = html_table.replace('<td>', '<td style="padding: 10px; border: 1px solid #ddd; text-align: center;">')
     
-    if es_admin:
-        intro_texto = "El sistema ha detectado el siguiente listado GENERAL de todos los boletos de la empresa que superan el tiempo límite establecido para su etapa de proceso. Este es un reporte global recordatorio de todas las demoras actuales:"
-    else:
-        intro_texto = "El sistema ha detectado que los siguientes boletos a tu cargo superan el tiempo límite establecido para su etapa de proceso. Por favor, revisar la situación de cada uno y actualizar el estado o dejar un comentario en la plataforma:"
-    
     html_body = f"""
     <html>
     <body>
         <h2 style="color: #d32f2f; font-family: Arial, sans-serif;">Reporte de Boletos con Retraso Operativo</h2>
-        <p style="font-family: Arial, sans-serif; font-size: 14px;">Hola <b>{nombre_asesor}</b>,</p>
+        <p style="font-family: Arial, sans-serif; font-size: 14px;">{saludo}</p>
         <p style="font-family: Arial, sans-serif; font-size: 14px;">{intro_texto}</p>
         {html_table}
         <br>
@@ -186,7 +184,7 @@ if df_cargado is not None:
         
         df = df[mask_2026].copy()
         
-        # Limites de demora (Sin Insc de Prenda)
+        # Limites de demora
         limites_demora = {
             "Ingreso Pendiente": 1,
             "Creacion En Siac": 1,
@@ -297,9 +295,7 @@ if df_cargado is not None:
         meses_disponibles = sorted(meses_limpios)
         opciones_mes = ["Todos los meses"] + meses_disponibles
         
-        # --- MES PREDETERMINADO AUTOMÁTICO (NATIVO, SIN PYTZ) ---
-        # pd.Timestamp.now() toma la hora local del servidor, pero le restamos 3 horas 
-        # manualmente para forzar la coincidencia con el huso horario de Argentina (UTC-3).
+        # --- MES PREDETERMINADO AUTOMÁTICO (NATIVO) ---
         mes_actual = (pd.Timestamp.utcnow() - pd.Timedelta(hours=3)).strftime('%Y-%m') 
         
         idx_mes_defecto = 0
@@ -568,7 +564,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v14"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v15"
                 )
                 
                 if df_editado_demorados is not None:
@@ -613,50 +609,59 @@ if df_cargado is not None:
                     st.download_button("📥 Descargar (Excel)", data=convertir_df_a_excel(df_editado_demorados), file_name='Demoras.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
                 
                 with col_b2:
-                    if st.button("📧 Enviar Alerta Personalizada a cada Asesor"):
-                        with st.spinner("Procesando y enviando correos (Asesores y Administradores)..."):
-                            
+                    if st.button("📧 Enviar Alertas por Etapa del Proceso"):
+                        with st.spinner("Clasificando etapas y enviando correos cruzados..."):
                             df_mail_completo = df_editado_demorados[['Identificador', 'Estado Actual', 'Días en este estado', 'Límite Máximo', 'Nombre_Asesor__c', 'Comentario']]
                             
                             if 'Nombre_Asesor__c' in df_editado_demorados.columns:
-                                asesores_con_demora = df_editado_demorados['Nombre_Asesor__c'].dropna().unique()
+                                # Dividir los estados según la responsabilidad
+                                estados_pre_facturacion = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago"]
+                                estados_post_facturacion = ["Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega"]
                                 
-                                correos_asesores_enviados = 0
+                                df_pre = df_mail_completo[df_mail_completo['Estado Actual'].isin(estados_pre_facturacion)]
+                                df_post = df_mail_completo[df_mail_completo['Estado Actual'].isin(estados_post_facturacion)]
+                                
+                                string_todos_los_admins = ", ".join(correos_administradores.values())
+                                
+                                correos_enviados = 0
                                 asesores_sin_correo = []
                                 
-                                for asesor in asesores_con_demora:
-                                    df_asesor = df_mail_completo[df_mail_completo['Nombre_Asesor__c'] == asesor].drop(columns=['Nombre_Asesor__c'])
-                                    
-                                    try:
-                                        correo_destino = diccionario_correos.get(asesor.strip(), st.secrets["EMAIL_DESTINO"])
+                                # 1. BLOQUE PRE-FACTURACIÓN (Para: Asesor | CC: Administradores)
+                                if not df_pre.empty:
+                                    for asesor in df_pre['Nombre_Asesor__c'].dropna().unique():
+                                        df_asesor = df_pre[df_pre['Nombre_Asesor__c'] == asesor].drop(columns=['Nombre_Asesor__c'])
+                                        correo_asesor = diccionario_correos.get(asesor.strip(), st.secrets["EMAIL_DESTINO"])
                                         
-                                        if correo_destino == st.secrets["EMAIL_DESTINO"]:
+                                        if correo_asesor == st.secrets["EMAIL_DESTINO"]:
                                             asesores_sin_correo.append(asesor)
-                                            nombre_mensaje = f"{asesor} (Enviado a Supervisión)"
-                                        else:
-                                            nombre_mensaje = asesor
                                             
-                                        exito, msj = enviar_correo_personalizado(df_asesor, correo_destino, nombre_mensaje, es_admin=False)
-                                        if exito: 
-                                            correos_asesores_enviados += 1
-                                            
-                                    except Exception as e:
-                                        st.error(f"Falta configurar los Secrets de Streamlit. Detalle: {e}")
-                                        break
-                                
-                                correos_admins_enviados = 0
-                                for nombre_admin, correo_admin in correos_administradores.items():
-                                    try:
-                                        exito, msj = enviar_correo_personalizado(df_mail_completo, correo_admin, nombre_admin, es_admin=True)
-                                        if exito:
-                                            correos_admins_enviados += 1
-                                    except Exception as e:
-                                        pass
+                                        asunto_pre = f"⚠️ Demoras Comerciales (PRE-Facturación) - Asesor: {asesor}"
+                                        saludo_pre = f"Hola <b>{asesor}</b>,"
+                                        intro_pre = "El sistema detectó las siguientes demoras en las etapas previas a la Facturación. Al estar en la fase inicial del proceso, solicitamos tu gestión comercial para destrabar estas operaciones:"
                                         
-                                if correos_asesores_enviados > 0 or correos_admins_enviados > 0:
-                                    st.success(f"¡Se enviaron exitosamente {correos_asesores_enviados} alertas a Asesores y {correos_admins_enviados} reportes globales a Administradores!")
+                                        exito, _ = enviar_correo_personalizado(df_asesor, destinatario=correo_asesor, cc=string_todos_los_admins, asunto=asunto_pre, saludo=saludo_pre, intro_texto=intro_pre)
+                                        if exito: correos_enviados += 1
+                                
+                                # 2. BLOQUE POST-FACTURACIÓN (Para: Administradores | CC: Asesor correspondiente)
+                                if not df_post.empty:
+                                    for asesor in df_post['Nombre_Asesor__c'].dropna().unique():
+                                        df_asesor = df_post[df_post['Nombre_Asesor__c'] == asesor].drop(columns=['Nombre_Asesor__c'])
+                                        correo_asesor = diccionario_correos.get(asesor.strip(), st.secrets["EMAIL_DESTINO"])
+                                        
+                                        if correo_asesor == st.secrets["EMAIL_DESTINO"] and asesor not in asesores_sin_correo:
+                                            asesores_sin_correo.append(asesor)
+                                            
+                                        asunto_post = f"⚠️ Demoras Administrativas (POST-Facturación) - Operaciones de: {asesor}"
+                                        saludo_post = "Hola <b>Equipo de Administración</b>,"
+                                        intro_post = f"El sistema detectó demoras en Facturación o etapas posteriores correspondientes a operaciones del asesor <b>{asesor}</b> (en copia). Se solicita gestión administrativa inmediata para evitar mayores retrasos en la entrega:"
+                                        
+                                        exito, _ = enviar_correo_personalizado(df_asesor, destinatario=string_todos_los_admins, cc=correo_asesor, asunto=asunto_post, saludo=saludo_post, intro_texto=intro_post)
+                                        if exito: correos_enviados += 1
+                                        
+                                if correos_enviados > 0:
+                                    st.success(f"¡Se enviaron exitosamente {correos_enviados} alertas escaladas con copia cruzada!")
                                     if asesores_sin_correo:
-                                        st.warning(f"Nota: Los siguientes asesores no estaban en el diccionario y sus reportes se enviaron al correo de supervisión: {', '.join(asesores_sin_correo)}")
+                                        st.warning(f"Nota: Los siguientes asesores no estaban en el diccionario: {', '.join(set(asesores_sin_correo))}")
                             else:
                                 st.error("No se encontró la columna de Asesores para dividir los correos.")
                                 
