@@ -83,14 +83,25 @@ diccionario_correos = {
     "Martín Andrés Diaz": "martin.diaz@autolux.com.ar"
 }
 
+# --- CLASIFICACIÓN DE ADMINISTRADORES POR SUCURSAL ---
 correos_administradores = {
-    "Franco Gallardo": "ventas.especiales@autolux.com.ar",
-    "Mariano Walker": "mariano.walker@autolux.com.ar",
-    "Mariano (Créditos)": "creditos.salta@autolux.com.ar",
-    "Luis Ledesma": "luis.ledesma@autolux.com.ar",
-    "Alfoncina Gianibelli": "alfonsina.gianibelli@autolux.com.ar",
-    "Karen Diaz": "karen.diaz@autolux.com.ar",
-    "Eugenia Alvarez": "maria.alvarez@autolux.com.ar"
+    "GLOBAL": {
+        # Espacio para direcciones que deban recibir copias de TODAS las sucursales (gerencias, etc.)
+    },
+    "SALTA": {
+        "Franco Gallardo": "ventas.especiales@autolux.com.ar",
+        "Mariano (Créditos)": "creditos.salta@autolux.com.ar",
+        "Alfoncina Gianibelli": "alfonsina.gianibelli@autolux.com.ar",
+        "Eugenia Alvarez": "maria.alvarez@autolux.com.ar"
+    },
+    "JUJUY": {
+        "Luis Ledesma": "luis.ledesma@autolux.com.ar",
+        "Mariano Walker": "mariano.walker@autolux.com.ar",
+        "Karen Diaz": "karen.diaz@autolux.com.ar"
+    },
+    "TARTAGAL": {
+        "Ramiro Durand": "ramiro.durand@autolux.com.ar"
+    }
 }
 
 # ==========================================
@@ -388,10 +399,9 @@ if df_cargado is not None:
             
             df_tabla = df.copy() if estado_seleccionado == "Todos los estados" else df[df['Estado Actual'] == estado_seleccionado]
             
-            # --- LÓGICA PARA ENVIAR LAS BAJAS AL FINAL DE LA TABLA ---
+            # Lógica Bajas al Final
             df_tabla['es_baja'] = df_tabla['Estado Actual'] == 'Operación Dada De Baja'
             df_tabla = df_tabla.sort_values(by=['es_baja', 'Días en este estado'], ascending=[True, False]).drop(columns=['es_baja'])
-            # ---------------------------------------------------------
             
             def aplicar_estilos_dinamicos(row):
                 styles = [''] * len(row)
@@ -543,7 +553,6 @@ if df_cargado is not None:
             st.markdown("---")
             st.subheader("Cuellos de Botella: Boletos Activos en cada etapa")
             
-            # --- EXCLUIMOS LAS BAJAS DEL GRÁFICO DEL EMBUDO ---
             lista_etapas = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota"]
             conteos_estado = df['Estado Actual'].value_counts().to_dict()
             df_cuellos = pd.DataFrame([{'Etapa': e, 'Boletos Detenidos': conteos_estado.get(e, 0)} for e in reversed(lista_etapas)])
@@ -552,7 +561,6 @@ if df_cargado is not None:
             fig_cuellos.update_layout(showlegend=False)
             st.plotly_chart(fig_cuellos, use_container_width=True)
             
-            # --- NUEVA SECCIÓN: INDICADOR AISLADO DE BAJAS ---
             st.markdown("---")
             st.subheader("❌ Análisis de Operaciones Canceladas (Bajas)")
             total_bajas_flujo = len(df[df['Estado Actual'] == 'Operación Dada De Baja'])
@@ -584,7 +592,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v18"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v20"
                 )
                 
                 if df_editado_demorados is not None:
@@ -630,56 +638,72 @@ if df_cargado is not None:
                 
                 with col_b2:
                     if st.button("📧 Enviar Alertas por Etapa del Proceso"):
-                        with st.spinner("Clasificando etapas y enviando correos cruzados..."):
-                            df_mail_completo = df_editado_demorados[['Identificador', 'Estado Actual', 'Días en este estado', 'Límite Máximo', 'Nombre_Asesor__c', 'Comentario']]
+                        with st.spinner("Clasificando etapas y enviando correos cruzados por sucursal..."):
                             
-                            if 'Nombre_Asesor__c' in df_editado_demorados.columns:
-                                # Dividir los estados según la responsabilidad
+                            df_mail_completo = df_editado_demorados.merge(df[['Identificador', 'Sucursal_de_Venta__c']], on='Identificador', how='left')
+                            
+                            if 'Nombre_Asesor__c' in df_mail_completo.columns:
                                 estados_pre_facturacion = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago"]
                                 estados_post_facturacion = ["Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega"]
                                 
                                 df_pre = df_mail_completo[df_mail_completo['Estado Actual'].isin(estados_pre_facturacion)]
                                 df_post = df_mail_completo[df_mail_completo['Estado Actual'].isin(estados_post_facturacion)]
                                 
-                                string_todos_los_admins = ", ".join(correos_administradores.values())
-                                
                                 correos_enviados = 0
                                 asesores_sin_correo = []
                                 
-                                # 1. BLOQUE PRE-FACTURACIÓN (Para: Asesor | CC: Administradores)
+                                def obtener_correos_admins(sucursal_str):
+                                    suc_texto = str(sucursal_str).lower()
+                                    lista_admins = []
+                                    lista_admins.extend(correos_administradores.get("GLOBAL", {}).values())
+                                    
+                                    if "tartagal" in suc_texto:
+                                        lista_admins.extend(correos_administradores.get("TARTAGAL", {}).values())
+                                    elif "jujuy" in suc_texto:
+                                        lista_admins.extend(correos_administradores.get("JUJUY", {}).values())
+                                    else:
+                                        lista_admins.extend(correos_administradores.get("SALTA", {}).values())
+                                        
+                                    return ", ".join(list(set(lista_admins)))
+                                
+                                # 1. BLOQUE PRE-FACTURACIÓN
                                 if not df_pre.empty:
-                                    for asesor in df_pre['Nombre_Asesor__c'].dropna().unique():
-                                        df_asesor = df_pre[df_pre['Nombre_Asesor__c'] == asesor].drop(columns=['Nombre_Asesor__c'])
-                                        correo_asesor = diccionario_correos.get(asesor.strip(), st.secrets["EMAIL_DESTINO"])
+                                    for (asesor, sucursal), df_grupo in df_pre.groupby(['Nombre_Asesor__c', 'Sucursal_de_Venta__c']):
+                                        df_asesor = df_grupo.drop(columns=['Nombre_Asesor__c', 'Sucursal_de_Venta__c'])
+                                        correo_asesor = diccionario_correos.get(str(asesor).strip(), st.secrets["EMAIL_DESTINO"])
                                         
                                         if correo_asesor == st.secrets["EMAIL_DESTINO"]:
                                             asesores_sin_correo.append(asesor)
                                             
-                                        asunto_pre = f"⚠️ Demoras Comerciales (PRE-Facturación) - Asesor: {asesor}"
+                                        correos_admin_cc = obtener_correos_admins(sucursal)
+                                        
+                                        asunto_pre = f"⚠️ Demoras Comerciales (PRE-Facturación) - Asesor: {asesor} - Sucursal: {sucursal}"
                                         saludo_pre = f"Hola <b>{asesor}</b>,"
                                         intro_pre = "El sistema detectó las siguientes demoras en las etapas previas a la Facturación. Al estar en la fase inicial del proceso, solicitamos tu gestión comercial para destrabar estas operaciones:"
                                         
-                                        exito, _ = enviar_correo_personalizado(df_asesor, destinatario=correo_asesor, cc=string_todos_los_admins, asunto=asunto_pre, saludo=saludo_pre, intro_texto=intro_pre)
+                                        exito, _ = enviar_correo_personalizado(df_asesor, destinatario=correo_asesor, cc=correos_admin_cc, asunto=asunto_pre, saludo=saludo_pre, intro_texto=intro_pre)
                                         if exito: correos_enviados += 1
                                 
-                                # 2. BLOQUE POST-FACTURACIÓN (Para: Administradores | CC: Asesor correspondiente)
+                                # 2. BLOQUE POST-FACTURACIÓN
                                 if not df_post.empty:
-                                    for asesor in df_post['Nombre_Asesor__c'].dropna().unique():
-                                        df_asesor = df_post[df_post['Nombre_Asesor__c'] == asesor].drop(columns=['Nombre_Asesor__c'])
-                                        correo_asesor = diccionario_correos.get(asesor.strip(), st.secrets["EMAIL_DESTINO"])
+                                    for (asesor, sucursal), df_grupo in df_post.groupby(['Nombre_Asesor__c', 'Sucursal_de_Venta__c']):
+                                        df_asesor = df_grupo.drop(columns=['Nombre_Asesor__c', 'Sucursal_de_Venta__c'])
+                                        correo_asesor = diccionario_correos.get(str(asesor).strip(), st.secrets["EMAIL_DESTINO"])
                                         
                                         if correo_asesor == st.secrets["EMAIL_DESTINO"] and asesor not in asesores_sin_correo:
                                             asesores_sin_correo.append(asesor)
                                             
-                                        asunto_post = f"⚠️ Demoras Administrativas (POST-Facturación) - Operaciones de: {asesor}"
-                                        saludo_post = "Hola <b>Equipo de Administración</b>,"
+                                        correos_admin_destinatario = obtener_correos_admins(sucursal)
+                                        
+                                        asunto_post = f"⚠️ Demoras Administrativas (POST-Facturación) - Operaciones de: {asesor} - Sucursal: {sucursal}"
+                                        saludo_post = f"Hola <b>Equipo de Administración ({sucursal})</b>,"
                                         intro_post = f"El sistema detectó demoras en Facturación o etapas posteriores correspondientes a operaciones del asesor <b>{asesor}</b> (en copia). Se solicita gestión administrativa inmediata para evitar mayores retrasos en la entrega:"
                                         
-                                        exito, _ = enviar_correo_personalizado(df_asesor, destinatario=string_todos_los_admins, cc=correo_asesor, asunto=asunto_post, saludo=saludo_post, intro_texto=intro_post)
+                                        exito, _ = enviar_correo_personalizado(df_asesor, destinatario=correos_admin_destinatario, cc=correo_asesor, asunto=asunto_post, saludo=saludo_post, intro_texto=intro_post)
                                         if exito: correos_enviados += 1
                                         
                                 if correos_enviados > 0:
-                                    st.success(f"¡Se enviaron exitosamente {correos_enviados} alertas escaladas con copia cruzada!")
+                                    st.success(f"¡Se enviaron exitosamente {correos_enviados} alertas escaladas con copia cruzada organizadas por sucursal!")
                                     if asesores_sin_correo:
                                         st.warning(f"Nota: Los siguientes asesores no estaban en el diccionario: {', '.join(set(asesores_sin_correo))}")
                             else:
