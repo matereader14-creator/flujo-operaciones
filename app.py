@@ -592,7 +592,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v20"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v21"
                 )
                 
                 if df_editado_demorados is not None:
@@ -679,7 +679,7 @@ if df_cargado is not None:
                                         
                                         asunto_pre = f"⚠️ Demoras Comerciales (PRE-Facturación) - Asesor: {asesor} - Sucursal: {sucursal}"
                                         saludo_pre = f"Hola <b>{asesor}</b>,"
-                                        intro_pre = "El sistema detectó las siguientes demoras en las etapas previas a la Facturación. Al estar en la fase inicial del proceso, solicitamos tu gestión comercial para destrabar estas operaciones:"
+                                        intro_pre = "El sistema detectó las siguientes demoras en las etapas previas a la Facturación. Al estar en la fase inicial del proceso, solicitamos tu gestión comercial para destrabar estas operaciones. <b>Por favor, ingresa a la aplicación de Flujo de Operaciones y, en la pestaña de 'Alertas de Demora', completa la casilla de 'Comentario' para informar el estado actual de cada caso:</b>"
                                         
                                         exito, _ = enviar_correo_personalizado(df_asesor, destinatario=correo_asesor, cc=correos_admin_cc, asunto=asunto_pre, saludo=saludo_pre, intro_texto=intro_pre)
                                         if exito: correos_enviados += 1
@@ -697,7 +697,7 @@ if df_cargado is not None:
                                         
                                         asunto_post = f"⚠️ Demoras Administrativas (POST-Facturación) - Operaciones de: {asesor} - Sucursal: {sucursal}"
                                         saludo_post = f"Hola <b>Equipo de Administración ({sucursal})</b>,"
-                                        intro_post = f"El sistema detectó demoras en Facturación o etapas posteriores correspondientes a operaciones del asesor <b>{asesor}</b> (en copia). Se solicita gestión administrativa inmediata para evitar mayores retrasos en la entrega:"
+                                        intro_post = f"El sistema detectó demoras en Facturación o etapas posteriores correspondientes a operaciones del asesor <b>{asesor}</b> (en copia). Se solicita gestión administrativa inmediata para evitar mayores retrasos en la entrega. <b>Por favor, ingresen a la aplicación de Flujo de Operaciones y, en la pestaña de 'Alertas de Demora', completen la casilla de 'Comentario' para informar el estado actual de cada caso:</b>"
                                         
                                         exito, _ = enviar_correo_personalizado(df_asesor, destinatario=correos_admin_destinatario, cc=correo_asesor, asunto=asunto_post, saludo=saludo_post, intro_texto=intro_post)
                                         if exito: correos_enviados += 1
@@ -714,3 +714,4 @@ if df_cargado is not None:
 
     except Exception as e:
         st.error(f"Error procesando la base de datos. (Detalle: {e})")
+    
