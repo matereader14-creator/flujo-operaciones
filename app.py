@@ -6,6 +6,7 @@ import plotly.express as px
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import pytz
 
 # 1. Configuración principal de la página
 st.set_page_config(page_title="Flujo de Operaciones", layout="wide", page_icon="📊")
@@ -388,6 +389,11 @@ if df_cargado is not None:
             
             df_tabla = df.copy() if estado_seleccionado == "Todos los estados" else df[df['Estado Actual'] == estado_seleccionado]
             
+            # --- LÓGICA PARA ENVIAR LAS BAJAS AL FINAL DE LA TABLA ---
+            df_tabla['es_baja'] = df_tabla['Estado Actual'] == 'Operación Dada De Baja'
+            df_tabla = df_tabla.sort_values(by=['es_baja', 'Días en este estado'], ascending=[True, False]).drop(columns=['es_baja'])
+            # ---------------------------------------------------------
+            
             def aplicar_estilos_dinamicos(row):
                 styles = [''] * len(row)
                 estado = row.get('Estado Actual', '')
@@ -536,14 +542,30 @@ if df_cargado is not None:
                 col3.metric("Tiempo Promedio de Finalización", "0 días")
             
             st.markdown("---")
-            st.subheader("Cuellos de Botella: Boletos en cada etapa")
-            lista_etapas = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", "Operación Dada De Baja"]
+            st.subheader("Cuellos de Botella: Boletos Activos en cada etapa")
+            
+            # --- EXCLUIMOS LAS BAJAS DEL GRÁFICO DEL EMBUDO ---
+            lista_etapas = ["Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota"]
             conteos_estado = df['Estado Actual'].value_counts().to_dict()
             df_cuellos = pd.DataFrame([{'Etapa': e, 'Boletos Detenidos': conteos_estado.get(e, 0)} for e in reversed(lista_etapas)])
             
-            fig_cuellos = px.bar(df_cuellos, x='Boletos Detenidos', y='Etapa', orientation='h', title='Volumen estancado por proceso', color='Boletos Detenidos', color_continuous_scale=['#f0f2f6', '#ff4b4b'])
+            fig_cuellos = px.bar(df_cuellos, x='Boletos Detenidos', y='Etapa', orientation='h', title='Volumen estancado por proceso (Sin Bajas)', color='Boletos Detenidos', color_continuous_scale=['#f0f2f6', '#ff4b4b'])
             fig_cuellos.update_layout(showlegend=False)
             st.plotly_chart(fig_cuellos, use_container_width=True)
+            
+            # --- NUEVA SECCIÓN: INDICADOR AISLADO DE BAJAS ---
+            st.markdown("---")
+            st.subheader("❌ Análisis de Operaciones Canceladas (Bajas)")
+            total_bajas_flujo = len(df[df['Estado Actual'] == 'Operación Dada De Baja'])
+            porcentaje_bajas = (total_bajas_flujo / len(df) * 100) if len(df) > 0 else 0
+            
+            st.metric(
+                label="Total de Bajas en el mes seleccionado", 
+                value=f"{total_bajas_flujo} boletos", 
+                delta=f"{porcentaje_bajas:.1f}% del volumen total", 
+                delta_color="inverse"
+            )
+            st.info("Nota: Las operaciones dadas de baja han sido separadas del flujo principal para no alterar la lectura del embudo comercial activo.")
                 
         with tab_alertas:
             st.subheader("⚠️ Registro de Boletos Demorados")
@@ -563,7 +585,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v16"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v17"
                 )
                 
                 if df_editado_demorados is not None:
