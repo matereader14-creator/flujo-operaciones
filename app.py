@@ -177,10 +177,10 @@ if df_cargado is not None:
             
         df['Comentario'] = df['Comentario'].fillna("")
         
-        # PROCESAMIENTO DE FECHAS
+        # PROCESAMIENTO DE FECHAS (CON FIX LATINOAMERICANO dayfirst=True)
         cols_fechas = [c for c in df.columns if 'fecha' in str(c).lower()]
         for col in cols_fechas:
-            df[col] = pd.to_datetime(df[col], errors='coerce')
+            df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
             
         cols_fechas_desarrollo = [c for c in cols_fechas if 'entrega_estimada' not in str(c).lower()]
         cols_fechas_calculo_inicio = [c for c in cols_fechas_desarrollo if 'baja' not in str(c).lower()]
@@ -517,24 +517,24 @@ if df_cargado is not None:
                     else:
                         col_info3.metric("📅 Entrega Estimada", "No definida")
                         
-                    fechas_inicio_validas = pd.to_datetime(datos_boleto[cols_fechas_calculo_inicio].dropna(), errors='coerce')
+                    fechas_inicio_validas = pd.to_datetime(datos_boleto[cols_fechas_calculo_inicio].dropna(), errors='coerce', dayfirst=True)
                     fecha_inicio_boleto = fechas_inicio_validas.min() if not fechas_inicio_validas.empty else pd.NaT
                     
                     if datos_boleto['Estado Actual'] == 'Disfruta Tu Nuevo Toyota':
                         fecha_disp = datos_boleto.get('Fecha_de_disfruta_tu_nuevo_Toyota__c')
                         if pd.notna(fecha_disp):
-                            fecha_fin_boleto = pd.to_datetime(fecha_disp)
+                            fecha_fin_boleto = pd.to_datetime(fecha_disp, dayfirst=True)
                         else:
-                            fechas_fin_validas = pd.to_datetime(datos_boleto[cols_fechas_desarrollo].dropna(), errors='coerce')
+                            fechas_fin_validas = pd.to_datetime(datos_boleto[cols_fechas_desarrollo].dropna(), errors='coerce', dayfirst=True)
                             fecha_fin_boleto = fechas_fin_validas.max() if not fechas_fin_validas.empty else pd.NaT
                         texto_duracion = "⏱️ Duración Total"
                         
                     elif datos_boleto['Estado Actual'] == 'Operación Dada De Baja':
                         fecha_baja = datos_boleto.get('Fecha_de_baja__c')
                         if pd.notna(fecha_baja):
-                            fecha_fin_boleto = pd.to_datetime(fecha_baja)
+                            fecha_fin_boleto = pd.to_datetime(fecha_baja, dayfirst=True)
                         else:
-                            fechas_fin_validas = pd.to_datetime(datos_boleto[cols_fechas_desarrollo].dropna(), errors='coerce')
+                            fechas_fin_validas = pd.to_datetime(datos_boleto[cols_fechas_desarrollo].dropna(), errors='coerce', dayfirst=True)
                             fecha_fin_boleto = fechas_fin_validas.max() if not fechas_fin_validas.empty else pd.NaT
                         texto_duracion = "⏱️ Duración hasta Baja"
                         
@@ -551,7 +551,7 @@ if df_cargado is not None:
                     hitos, fechas = [], []
                     for col in cols_fechas:
                         if col != 'Fecha_de_entrega_estimada__c' and pd.notna(datos_boleto[col]):
-                            fecha_valida = pd.to_datetime(datos_boleto[col], errors='coerce')
+                            fecha_valida = pd.to_datetime(datos_boleto[col], errors='coerce', dayfirst=True)
                             if pd.notna(fecha_valida):
                                 hitos.append(str(col).replace('Fecha_de_', '').replace('Fecha_', '').replace('__c', '').replace('_', ' ').title())
                                 fechas.append(fecha_valida)
@@ -584,7 +584,7 @@ if df_cargado is not None:
                 else:
                     fines_historico = df_finalizados_historico[cols_fechas_desarrollo].max(axis=1)
                     
-                tiempos_finalizacion = (pd.to_datetime(fines_historico, errors='coerce') - pd.to_datetime(inicios_historico, errors='coerce')).dt.days
+                tiempos_finalizacion = (pd.to_datetime(fines_historico, errors='coerce', dayfirst=True) - pd.to_datetime(inicios_historico, errors='coerce', dayfirst=True)).dt.days
                 promedio_finalizacion = tiempos_finalizacion.mean()
                 col3.metric("Tiempo Promedio de Finalización", f"{promedio_finalizacion:.1f} días" if pd.notna(promedio_finalizacion) else "N/A")
             else:
@@ -632,7 +632,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v23"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v24"
                 )
                 
                 if df_editado_demorados is not None:
