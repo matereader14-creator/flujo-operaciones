@@ -438,50 +438,59 @@ if df_cargado is not None:
         with tab_rendimiento:
             st.subheader("Carga de Trabajo Operativo - Asesores")
             if 'Nombre_Asesor__c' in df.columns and not df.empty:
-                # GRÁFICO 1: Volumen total de operaciones por asesor
-                vendedores = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
-                vendedores = vendedores.sort_values(by='Operaciones', ascending=False)
                 
-                fig_vendedores = px.bar(
-                    vendedores, 
+                # --- GRÁFICOS INDIVIDUALES POR ESTADO ---
+                orden_estados_graficos = [
+                    "Disfruta Tu Nuevo Toyota", 
+                    "Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", 
+                    "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", 
+                    "En Proceso De Patentamiento", "En Proceso De Entrega", "Operación Dada De Baja"
+                ]
+                
+                st.write("**Desglose de Operaciones por Etapa:**")
+                
+                for estado in orden_estados_graficos:
+                    df_estado = df[df['Estado Actual'] == estado]
+                    
+                    if not df_estado.empty:
+                        vendedores_estado = df_estado.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
+                        vendedores_estado = vendedores_estado.sort_values(by='Operaciones', ascending=False)
+                        
+                        if estado == "Disfruta Tu Nuevo Toyota":
+                            titulo_grafico = "🎉 Operaciones Finalizadas (Disfruta Tu Nuevo Toyota)"
+                        elif estado == "Operación Dada De Baja":
+                            titulo_grafico = "❌ Operaciones Canceladas (Bajas)"
+                        else:
+                            titulo_grafico = f"⏳ Boletos en: {estado}"
+                            
+                        fig_estado = px.bar(
+                            vendedores_estado, 
+                            x='Nombre_Asesor__c', 
+                            y='Operaciones', 
+                            title=titulo_grafico, 
+                            color='Nombre_Asesor__c', 
+                            color_discrete_sequence=px.colors.qualitative.Pastel
+                        )
+                        fig_estado.update_layout(showlegend=False, xaxis_title="", yaxis_title="Cantidad")
+                        st.plotly_chart(fig_estado, use_container_width=True)
+                        
+                st.markdown("---")
+                
+                # --- GRÁFICO FINAL: VOLUMEN TOTAL ---
+                st.subheader("📊 Volumen Total de Boletos (Todos los estados combinados)")
+                vendedores_total = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
+                vendedores_total = vendedores_total.sort_values(by='Operaciones', ascending=False)
+                
+                fig_total = px.bar(
+                    vendedores_total, 
                     x='Nombre_Asesor__c', 
                     y='Operaciones', 
-                    title='Volumen Total de Operaciones por Asesor', 
+                    title='Volumen Total Asignado por Asesor', 
                     color='Nombre_Asesor__c', 
                     color_discrete_sequence=px.colors.qualitative.Dark24
                 )
-                fig_vendedores.update_layout(showlegend=False, xaxis_title="", yaxis_title="Cantidad Total")
-                st.plotly_chart(fig_vendedores, use_container_width=True)
-                
-                st.markdown("---")
-                
-                # GRÁFICO 2: Segmentación por estado de cada boleto
-                st.subheader("Distribución Detallada por Etapa del Proceso")
-                
-                estado_asesor = df.groupby(['Nombre_Asesor__c', 'Estado Actual']).size().reset_index(name='Cantidad')
-                
-                orden_ideal_leyenda = [
-                    "Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", 
-                    "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", 
-                    "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", 
-                    "Operación Dada De Baja"
-                ]
-                
-                fig_estados = px.bar(
-                    estado_asesor,
-                    x='Nombre_Asesor__c',
-                    y='Cantidad',
-                    color='Estado Actual',
-                    title='Desglose de Boletos de cada Asesor',
-                    category_orders={
-                        'Nombre_Asesor__c': vendedores['Nombre_Asesor__c'].tolist(), # Ordena los asesores igual que el gráfico superior
-                        'Estado Actual': orden_ideal_leyenda # Ordena los colores cronológicamente
-                    },
-                    barmode='stack', # Apila los colores para formar la barra total
-                    color_discrete_sequence=px.colors.qualitative.Set3
-                )
-                fig_estados.update_layout(xaxis_title="Asesor", yaxis_title="Cantidad de Boletos", legend_title="Estado Actual")
-                st.plotly_chart(fig_estados, use_container_width=True)
+                fig_total.update_layout(showlegend=False, xaxis_title="Asesor", yaxis_title="Cantidad Total")
+                st.plotly_chart(fig_total, use_container_width=True)
 
         with tab_rastreo:
             st.subheader("Línea de Tiempo por Cliente")
@@ -623,7 +632,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v22"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v23"
                 )
                 
                 if df_editado_demorados is not None:
