@@ -86,7 +86,7 @@ diccionario_correos = {
 # --- CLASIFICACIÓN DE ADMINISTRADORES POR SUCURSAL ---
 correos_administradores = {
     "GLOBAL": {
-        # Espacio para direcciones que deban recibir copias de TODAS las sucursales (gerencias, etc.)
+        
     },
     "SALTA": {
         "Franco Gallardo": "ventas.especiales@autolux.com.ar",
@@ -438,6 +438,7 @@ if df_cargado is not None:
         with tab_rendimiento:
             st.subheader("Carga de Trabajo Operativo - Asesores")
             if 'Nombre_Asesor__c' in df.columns and not df.empty:
+                # GRÁFICO 1: Volumen total de operaciones por asesor
                 vendedores = df.groupby('Nombre_Asesor__c').size().reset_index(name='Operaciones')
                 vendedores = vendedores.sort_values(by='Operaciones', ascending=False)
                 
@@ -445,12 +446,42 @@ if df_cargado is not None:
                     vendedores, 
                     x='Nombre_Asesor__c', 
                     y='Operaciones', 
-                    title='Operaciones por Asesor', 
+                    title='Volumen Total de Operaciones por Asesor', 
                     color='Nombre_Asesor__c', 
                     color_discrete_sequence=px.colors.qualitative.Dark24
                 )
-                fig_vendedores.update_layout(showlegend=False)
+                fig_vendedores.update_layout(showlegend=False, xaxis_title="", yaxis_title="Cantidad Total")
                 st.plotly_chart(fig_vendedores, use_container_width=True)
+                
+                st.markdown("---")
+                
+                # GRÁFICO 2: Segmentación por estado de cada boleto
+                st.subheader("Distribución Detallada por Etapa del Proceso")
+                
+                estado_asesor = df.groupby(['Nombre_Asesor__c', 'Estado Actual']).size().reset_index(name='Cantidad')
+                
+                orden_ideal_leyenda = [
+                    "Ingreso Pendiente", "Creacion En Siac", "Proboleto Aprobado", "Pedido Confirmado", 
+                    "Firma Del Boleto", "En Proceso De Pago", "Facturacion", "Poliza De Seguro", 
+                    "En Proceso De Patentamiento", "En Proceso De Entrega", "Disfruta Tu Nuevo Toyota", 
+                    "Operación Dada De Baja"
+                ]
+                
+                fig_estados = px.bar(
+                    estado_asesor,
+                    x='Nombre_Asesor__c',
+                    y='Cantidad',
+                    color='Estado Actual',
+                    title='Desglose de Boletos de cada Asesor',
+                    category_orders={
+                        'Nombre_Asesor__c': vendedores['Nombre_Asesor__c'].tolist(), # Ordena los asesores igual que el gráfico superior
+                        'Estado Actual': orden_ideal_leyenda # Ordena los colores cronológicamente
+                    },
+                    barmode='stack', # Apila los colores para formar la barra total
+                    color_discrete_sequence=px.colors.qualitative.Set3
+                )
+                fig_estados.update_layout(xaxis_title="Asesor", yaxis_title="Cantidad de Boletos", legend_title="Estado Actual")
+                st.plotly_chart(fig_estados, use_container_width=True)
 
         with tab_rastreo:
             st.subheader("Línea de Tiempo por Cliente")
@@ -592,7 +623,7 @@ if df_cargado is not None:
                     df_demorados_mostrar,
                     use_container_width=True, hide_index=True,
                     column_config={"Identificador": None, "Comentario": st.column_config.TextColumn("💬 Comentario", help="Escribe el motivo.")},
-                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v21"
+                    disabled=[c for c in columnas_demora if c != 'Comentario'], key="editor_demoras_v22"
                 )
                 
                 if df_editado_demorados is not None:
@@ -714,4 +745,3 @@ if df_cargado is not None:
 
     except Exception as e:
         st.error(f"Error procesando la base de datos. (Detalle: {e})")
-    
