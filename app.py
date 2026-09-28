@@ -775,7 +775,14 @@ if df_cargado is not None:
                 if not df_entregados_6_dias.empty:
                     df_entregados_6_dias = df_entregados_6_dias.sort_values(by='Días desde entrega', ascending=False)
                     
-                    columnas_mostrar_pe = ['Identificador', 'Numero_de_Boleto__c', 'Sucursal_de_Venta__c', 'Nombre_Asesor__c', 'Fecha de Último Estado', 'Días desde entrega']
+                    # --- NUEVAS COLUMNAS DE FECHAS FORMATADAS ---
+                    # 1. Calculamos la fecha exacta del sexto día sumándole 6 a la fecha original
+                    df_entregados_6_dias['Fecha de Cumplimiento (6 días)'] = (df_entregados_6_dias['Fecha de Último Estado'] + pd.Timedelta(days=6)).dt.strftime('%d-%m-%Y')
+                    
+                    # 2. Le damos formato visual limpio a la fecha original de entrega
+                    df_entregados_6_dias['Fecha de Último Estado'] = df_entregados_6_dias['Fecha de Último Estado'].dt.strftime('%d-%m-%Y')
+                    
+                    columnas_mostrar_pe = ['Identificador', 'Numero_de_Boleto__c', 'Sucursal_de_Venta__c', 'Nombre_Asesor__c', 'Fecha de Último Estado', 'Días desde entrega', 'Fecha de Cumplimiento (6 días)']
                     col_existentes_pe = [c for c in columnas_mostrar_pe if c in df_entregados_6_dias.columns]
                     
                     st.dataframe(df_entregados_6_dias[col_existentes_pe], use_container_width=True, hide_index=True)
