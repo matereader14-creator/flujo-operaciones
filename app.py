@@ -363,14 +363,15 @@ if df_cargado is not None:
             return salida.getvalue()
 
         # ==========================================
-        # CREACIÓN DE PESTAÑAS
+        # CREACIÓN DE PESTAÑAS (6 Pestañas ahora)
         # ==========================================
-        tab_auditoria, tab_rendimiento, tab_rastreo, tab_flujo, tab_alertas = st.tabs([
+        tab_auditoria, tab_rendimiento, tab_rastreo, tab_flujo, tab_alertas, tab_post_entrega = st.tabs([
             "🔍 Auditoría",
             "👥 Rendimiento", 
             "🔎 Rastreo",
             "📊 Flujo",
-            "⚠️ Alertas de Demora"
+            "⚠️ Alertas de Demora",
+            "✅ Post-Entrega"
         ])
         
         with tab_auditoria:
@@ -751,6 +752,39 @@ if df_cargado is not None:
                                 
             else:
                 st.success("¡Excelente! No hay boletos demorados en este momento.")
+
+        # ==========================================
+        # 6. PESTAÑA POST-ENTREGA (ARCHIVABLES)
+        # ==========================================
+        with tab_post_entrega:
+            st.subheader("Boletos Finalizados (6+ días desde la entrega)")
+            
+            df_entregados = df[df['Estado Actual'] == 'Disfruta Tu Nuevo Toyota'].copy()
+            
+            if not df_entregados.empty:
+                hoy = pd.Timestamp.now()
+                df_entregados['Días desde entrega'] = (hoy - df_entregados['Fecha de Último Estado']).dt.days
+                
+                df_entregados_6_dias = df_entregados[df_entregados['Días desde entrega'] >= 6].copy()
+                
+                st.metric(
+                    label="Total de boletos listos para archivar/seguimiento (> 6 días)", 
+                    value=len(df_entregados_6_dias)
+                )
+                
+                if not df_entregados_6_dias.empty:
+                    df_entregados_6_dias = df_entregados_6_dias.sort_values(by='Días desde entrega', ascending=False)
+                    
+                    columnas_mostrar_pe = ['Identificador', 'Numero_de_Boleto__c', 'Sucursal_de_Venta__c', 'Nombre_Asesor__c', 'Fecha de Último Estado', 'Días desde entrega']
+                    col_existentes_pe = [c for c in columnas_mostrar_pe if c in df_entregados_6_dias.columns]
+                    
+                    st.dataframe(df_entregados_6_dias[col_existentes_pe], use_container_width=True, hide_index=True)
+                    
+                    st.download_button("📥 Descargar Listado (Excel)", data=convertir_df_a_excel(df_entregados_6_dias[col_existentes_pe]), file_name='Boletos_Post_Entrega.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                else:
+                    st.info("No hay boletos que hayan superado los 6 días desde su entrega reciente.")
+            else:
+                st.info("No hay boletos finalizados en el período seleccionado.")
 
     except Exception as e:
         st.error(f"Error procesando la base de datos. (Detalle: {e})")
