@@ -763,6 +763,7 @@ if df_cargado is not None:
             
             if not df_entregados.empty:
                 hoy = pd.Timestamp.now()
+                # Esta columna se usa para el cálculo interno, pero ya no se mostrará en la tabla
                 df_entregados['Días desde entrega'] = (hoy - df_entregados['Fecha de Último Estado']).dt.days
                 
                 df_entregados_6_dias = df_entregados[df_entregados['Días desde entrega'] >= 6].copy()
@@ -775,14 +776,18 @@ if df_cargado is not None:
                 if not df_entregados_6_dias.empty:
                     df_entregados_6_dias = df_entregados_6_dias.sort_values(by='Días desde entrega', ascending=False)
                     
-                    # --- NUEVAS COLUMNAS DE FECHAS FORMATADAS ---
-                    # 1. Calculamos la fecha exacta del sexto día sumándole 6 a la fecha original
-                    df_entregados_6_dias['Fecha de Cumplimiento (6 días)'] = (df_entregados_6_dias['Fecha de Último Estado'] + pd.Timedelta(days=6)).dt.strftime('%d-%m-%Y')
+                    # --- NUEVAS COLUMNAS DE FECHAS FORMATADAS Y RENOMBRADAS ---
+                    # 1. Calculamos la fecha de la encuesta sumándole 6 días
+                    df_entregados_6_dias['Fecha de Encuesta'] = (df_entregados_6_dias['Fecha de Último Estado'] + pd.Timedelta(days=6)).dt.strftime('%d-%m-%Y')
                     
-                    # 2. Le damos formato visual limpio a la fecha original de entrega
+                    # 2. Formateamos la fecha original
                     df_entregados_6_dias['Fecha de Último Estado'] = df_entregados_6_dias['Fecha de Último Estado'].dt.strftime('%d-%m-%Y')
                     
-                    columnas_mostrar_pe = ['Identificador', 'Numero_de_Boleto__c', 'Sucursal_de_Venta__c', 'Nombre_Asesor__c', 'Fecha de Último Estado', 'Días desde entrega', 'Fecha de Cumplimiento (6 días)']
+                    # 3. Renombramos la columna 'Fecha de Último Estado' a 'Fecha de Disfruta tu Nuevo Toyota'
+                    df_entregados_6_dias = df_entregados_6_dias.rename(columns={'Fecha de Último Estado': 'Fecha de Disfruta tu Nuevo Toyota'})
+                    
+                    # 4. Eliminamos 'Días desde entrega' de las columnas a mostrar
+                    columnas_mostrar_pe = ['Identificador', 'Numero_de_Boleto__c', 'Sucursal_de_Venta__c', 'Nombre_Asesor__c', 'Fecha de Disfruta tu Nuevo Toyota', 'Fecha de Encuesta']
                     col_existentes_pe = [c for c in columnas_mostrar_pe if c in df_entregados_6_dias.columns]
                     
                     st.dataframe(df_entregados_6_dias[col_existentes_pe], use_container_width=True, hide_index=True)
